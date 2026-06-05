@@ -1,0 +1,1 @@
+﻿// AssetDetail is implemented inline in /assets/[id]/page.tsx\nexport {};

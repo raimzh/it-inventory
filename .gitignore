@@ -1,0 +1,43 @@
+﻿# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+.next/
+out/
+build/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (not config)
+postgres_data/
+redis_data/
+
+# Uploads and backups (don't commit)
+backend/uploads/
+backend/backups/
+
+# SSL certs
+nginx/certs/*.pem
+nginx/certs/*.key
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/

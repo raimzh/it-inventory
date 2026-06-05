@@ -1,0 +1,1 @@
+﻿// AssetsTable is implemented inline in /assets/page.tsx for performance\nexport {};
