@@ -110,6 +110,28 @@ export default function ExcelImportModal({
     }
   };
 
+  // ─── Error message extractor ───────────────────────────────────────────────
+  // Handles any shape the backend might return (string, nested object, array).
+  const extractError = (e: any, fallback: string): string => {
+    const d = e?.response?.data;
+    if (!d) return e?.message || fallback;
+
+    // d.message can be: string | string[] | object | object[]
+    const m = d?.message;
+    if (typeof m === "string" && m) return m;
+    if (Array.isArray(m) && m.length > 0) {
+      // e.g. class-validator returns ["field must not be empty"]
+      return m.map((x: any) => (typeof x === "string" ? x : JSON.stringify(x))).join("; ");
+    }
+    if (m && typeof m === "object") {
+      // Our old HttpExceptionFilter nested the whole response as message — handle it
+      const inner = (m as any).message;
+      if (typeof inner === "string") return inner;
+    }
+    if (typeof d?.error === "string") return d.error;
+    return e?.message || fallback;
+  };
+
   // ─── Preview ───────────────────────────────────────────────────────────────
   const handlePreview = async () => {
     if (!file) return;
@@ -124,12 +146,7 @@ export default function ExcelImportModal({
       setPreview(data as PreviewResult);
       setStep("preview");
     } catch (e: any) {
-      const msg =
-        e.response?.data?.message ||
-        e.response?.data?.error ||
-        e.message ||
-        "Ошибка парсинга файла";
-      setError(String(msg));
+      setError(extractError(e, "Ошибка парсинга файла"));
     } finally {
       setLoading(false);
     }
@@ -157,12 +174,7 @@ export default function ExcelImportModal({
       clearInterval(interval);
       setProgress(0);
       setStep("preview");
-      const msg =
-        e.response?.data?.message ||
-        e.response?.data?.error ||
-        e.message ||
-        "Ошибка импорта";
-      setError(String(msg));
+      setError(extractError(e, "Ошибка импорта"));
     }
   };
 
