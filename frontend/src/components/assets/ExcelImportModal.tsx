@@ -4,7 +4,7 @@ import {
   X, Upload, FileSpreadsheet, Download, AlertCircle,
   CheckCircle, AlertTriangle, RefreshCw, Eye, Info,
 } from "lucide-react";
-import { excelApi } from "@/lib/api";
+import { excelApi, downloadBlob } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PreviewRow {
@@ -38,10 +38,19 @@ interface ImportLog {
   errorCount: number;
   status: "success" | "partial" | "failed";
   createdAt: string;
-  errors?: string;
+  errors?: string | null;
 }
 
 type Step = "upload" | "preview" | "importing" | "done";
+
+const STEPS = [
+  { id: "upload",    label: "1. Файл" },
+  { id: "preview",   label: "2. Предпросмотр" },
+  { id: "importing", label: "3. Импорт" },
+  { id: "done",      label: "4. Готово" },
+] as const;
+
+const STEP_ORDER: Step[] = ["upload", "preview", "importing", "done"];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ExcelImportModal({
@@ -58,14 +67,17 @@ export default function ExcelImportModal({
   const [importLog, setImportLog] = useState<ImportLog | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ─── File handling ─────────────────────────────────────────────────────────
   const validateFile = (f: File): string | null => {
     const ext = f.name.split(".").pop()?.toLowerCase();
-    if (!["xlsx", "xls"].includes(ext ?? "")) return "Разрешены только файлы .xlsx и .xls";
-    if (f.size > 20 * 1024 * 1024) return "Размер файла не должен превышать 20 МБ";
+    if (!["xlsx", "xls"].includes(ext ?? ""))
+      return "Разрешены только файлы .xlsx и .xls";
+    if (f.size > 20 * 1024 * 1024)
+      return "Размер файла не должен превышать 20 МБ";
     return null;
   };
 
@@ -83,17 +95,44 @@ export default function ExcelImportModal({
     if (f) handleFile(f);
   };
 
+  // ─── Authenticated template download ──────────────────────────────────────
+  // IMPORTANT: Use axios (with Authorization header) instead of <a href>,
+  // because the backend requires JWT authentication.
+  const handleDownloadTemplate = async () => {
+    setTemplateLoading(true);
+    try {
+      const { data: blob } = await excelApi.downloadTemplate();
+      downloadBlob(blob, "assets_template.xlsx");
+    } catch {
+      setError("Не удалось скачать шаблон. Попробуйте ещё раз.");
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
   // ─── Preview ───────────────────────────────────────────────────────────────
   const handlePreview = async () => {
     if (!file) return;
     setLoading(true); setError("");
     try {
       const { data } = await excelApi.preview(file);
-      setPreview(data);
+      // Guard: backend must return a rows array
+      if (!data || !Array.isArray(data.rows)) {
+        setError("Сервер вернул неверный формат. Проверьте файл и попробуйте снова.");
+        return;
+      }
+      setPreview(data as PreviewResult);
       setStep("preview");
     } catch (e: any) {
-      setError(e.response?.data?.message || e.message || "Ошибка парсинга файла");
-    } finally { setLoading(false); }
+      const msg =
+        e.response?.data?.message ||
+        e.response?.data?.error ||
+        e.message ||
+        "Ошибка парсинга файла";
+      setError(String(msg));
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ─── Import ────────────────────────────────────────────────────────────────
@@ -101,7 +140,6 @@ export default function ExcelImportModal({
     if (!file) return;
     setStep("importing"); setError(""); setProgress(0);
 
-    // Animate progress bar while uploading
     const interval = setInterval(() => {
       setProgress(p => Math.min(p + 3, 85));
     }, 200);
@@ -110,33 +148,55 @@ export default function ExcelImportModal({
       const { data } = await excelApi.importFile(file);
       clearInterval(interval);
       setProgress(100);
-      setImportLog(data);
+      setImportLog(data as ImportLog);
       setStep("done");
-      if (data.createdCount > 0 || data.updatedCount > 0) onSuccess();
+      if ((data.createdCount ?? 0) > 0 || (data.updatedCount ?? 0) > 0) {
+        onSuccess();
+      }
     } catch (e: any) {
       clearInterval(interval);
-      setProgress(0); setStep("preview");
-      setError(e.response?.data?.message || e.message || "Ошибка импорта");
+      setProgress(0);
+      setStep("preview");
+      const msg =
+        e.response?.data?.message ||
+        e.response?.data?.error ||
+        e.message ||
+        "Ошибка импорта";
+      setError(String(msg));
     }
   };
 
   // ─── Render helpers ────────────────────────────────────────────────────────
-  const actionBadge = (action: PreviewRow["action"]) => {
-    const cfg = {
-      create: { label: "Добавить", cls: "bg-green-100 text-green-700" },
-      update: { label: "Обновить", cls: "bg-blue-100 text-blue-700" },
+  const actionBadge = (action: string) => {
+    const cfg: Record<string, { label: string; cls: string }> = {
+      create: { label: "Добавить",   cls: "bg-green-100 text-green-700" },
+      update: { label: "Обновить",   cls: "bg-blue-100 text-blue-700" },
       skip:   { label: "Пропустить", cls: "bg-gray-100 text-gray-600" },
-      error:  { label: "Ошибка", cls: "bg-red-100 text-red-700" },
-    }[action];
+      error:  { label: "Ошибка",     cls: "bg-red-100 text-red-700" },
+    };
+    const c = cfg[action] ?? { label: action, cls: "bg-gray-100 text-gray-600" };
     return (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>
-        {cfg.label}
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.cls}`}>
+        {c.label}
       </span>
     );
   };
 
+  // Safe parse of errors JSON stored in the import log
+  const parseErrors = (raw: string | null | undefined): string[] => {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [String(parsed)];
+    } catch {
+      return [raw];
+    }
+  };
+
+  const stepIndex = STEP_ORDER.indexOf(step);
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fadeIn">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
 
         {/* Header */}
@@ -150,7 +210,10 @@ export default function ExcelImportModal({
               <p className="text-sm text-gray-500">Массовая загрузка основных средств</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -158,18 +221,15 @@ export default function ExcelImportModal({
         {/* Step indicator */}
         <div className="px-6 pt-4 flex-shrink-0">
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            {[
-              { id: "upload", label: "1. Файл" },
-              { id: "preview", label: "2. Предпросмотр" },
-              { id: "importing", label: "3. Импорт" },
-              { id: "done", label: "4. Готово" },
-            ].map((s, i, arr) => (
+            {STEPS.map((s, i) => (
               <div key={s.id} className="flex items-center gap-2">
-                <span className={`font-medium ${step === s.id ? "text-primary-600" :
-                  ["preview","importing","done"].indexOf(step) >= i ? "text-gray-900 dark:text-white" : "text-gray-400"}`}>
+                <span className={`font-medium ${
+                  step === s.id ? "text-primary-600" :
+                  stepIndex > i ? "text-gray-900 dark:text-white" : "text-gray-400"
+                }`}>
                   {s.label}
                 </span>
-                {i < arr.length - 1 && <span className="text-gray-300">›</span>}
+                {i < STEPS.length - 1 && <span className="text-gray-300">›</span>}
               </div>
             ))}
           </div>
@@ -181,7 +241,7 @@ export default function ExcelImportModal({
           {/* ── Step: UPLOAD ── */}
           {step === "upload" && (
             <div className="space-y-4">
-              {/* Download template */}
+              {/* Download template (authenticated) */}
               <div className="flex items-center justify-between p-4 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800">
                 <div className="flex items-center gap-3">
                   <Info className="w-4 h-4 text-primary-600 flex-shrink-0" />
@@ -189,14 +249,16 @@ export default function ExcelImportModal({
                     Используйте готовый шаблон для правильного заполнения данных
                   </span>
                 </div>
-                <a
-                  href={excelApi.downloadTemplate()}
-                  download
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors flex-shrink-0"
+                <button
+                  onClick={handleDownloadTemplate}
+                  disabled={templateLoading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 >
-                  <Download className="w-4 h-4" />
+                  {templateLoading
+                    ? <RefreshCw className="w-4 h-4 animate-spin" />
+                    : <Download className="w-4 h-4" />}
                   Шаблон Excel
-                </a>
+                </button>
               </div>
 
               {/* Drop zone */}
@@ -206,9 +268,11 @@ export default function ExcelImportModal({
                 onDragLeave={() => setDragging(false)}
                 onDrop={onDrop}
                 className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all
-                  ${dragging ? "border-primary-500 bg-primary-50 dark:bg-primary-900/20" :
-                    file ? "border-green-400 bg-green-50 dark:bg-green-900/10" :
-                    "border-gray-200 dark:border-slate-700 hover:border-primary-400 hover:bg-gray-50 dark:hover:bg-slate-800/50"}`}
+                  ${dragging
+                    ? "border-primary-500 bg-primary-50 dark:bg-primary-900/20"
+                    : file
+                    ? "border-green-400 bg-green-50 dark:bg-green-900/10"
+                    : "border-gray-200 dark:border-slate-700 hover:border-primary-400 hover:bg-gray-50 dark:hover:bg-slate-800/50"}`}
               >
                 <input
                   ref={inputRef}
@@ -251,20 +315,20 @@ export default function ExcelImportModal({
               {/* Summary cards */}
               <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: "Добавить", count: preview.createCount, color: "green" },
-                  { label: "Обновить", count: preview.updateCount, color: "blue" },
-                  { label: "Пропустить", count: preview.skipCount, color: "gray" },
-                  { label: "Ошибки", count: preview.errorCount, color: "red" },
+                  { label: "Добавить",   count: preview.createCount  ?? 0, color: "green" },
+                  { label: "Обновить",   count: preview.updateCount  ?? 0, color: "blue" },
+                  { label: "Пропустить", count: preview.skipCount    ?? 0, color: "gray" },
+                  { label: "Ошибки",     count: preview.errorCount   ?? 0, color: "red" },
                 ].map(({ label, count, color }) => (
                   <div key={label} className={`p-4 rounded-xl text-center
                     ${color === "green" ? "bg-green-50 dark:bg-green-900/20" :
-                      color === "blue" ? "bg-blue-50 dark:bg-blue-900/20" :
-                      color === "red" ? "bg-red-50 dark:bg-red-900/20" :
+                      color === "blue"  ? "bg-blue-50 dark:bg-blue-900/20" :
+                      color === "red"   ? "bg-red-50 dark:bg-red-900/20" :
                       "bg-gray-50 dark:bg-slate-800"}`}>
                     <div className={`text-2xl font-bold
                       ${color === "green" ? "text-green-600" :
-                        color === "blue" ? "text-blue-600" :
-                        color === "red" ? "text-red-600" : "text-gray-600"}`}>
+                        color === "blue"  ? "text-blue-600" :
+                        color === "red"   ? "text-red-600" : "text-gray-600"}`}>
                       {count}
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">{label}</div>
@@ -284,7 +348,7 @@ export default function ExcelImportModal({
                 <div className="px-4 py-2 bg-gray-50 dark:bg-slate-800 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700">
                   <Eye className="w-4 h-4 text-gray-400" />
                   <span className="text-sm font-medium text-gray-700 dark:text-slate-300">
-                    Предпросмотр ({Math.min(preview.rows.length, 200)} из {preview.totalRows} строк)
+                    Предпросмотр ({Math.min((preview.rows ?? []).length, 200)} из {preview.totalRows ?? 0} строк)
                   </span>
                 </div>
                 <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
@@ -302,26 +366,29 @@ export default function ExcelImportModal({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-                      {preview.rows.map(row => (
-                        <tr key={row.rowNum}
-                          className={`${row.action === "error" ? "bg-red-50/50 dark:bg-red-900/10" :
-                            row.action === "skip" ? "opacity-50" : ""}`}>
+                      {(preview.rows ?? []).map(row => (
+                        <tr
+                          key={row.rowNum}
+                          className={`${
+                            row.action === "error" ? "bg-red-50/50 dark:bg-red-900/10" :
+                            row.action === "skip"  ? "opacity-50" : ""}`}
+                        >
                           <td className="px-3 py-2 text-gray-400 text-xs">{row.rowNum}</td>
                           <td className="px-3 py-2">{actionBadge(row.action)}</td>
                           <td className="px-3 py-2 font-mono text-xs text-gray-700 dark:text-slate-300">
-                            {row.inventoryNumber}
+                            {row.inventoryNumber ?? "—"}
                           </td>
                           <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[200px] truncate">
-                            {row.name}
+                            {row.name ?? "—"}
                           </td>
                           <td className="px-3 py-2 text-gray-500 text-xs">{row.departmentName || "—"}</td>
                           <td className="px-3 py-2 text-gray-500 text-xs">{row.responsiblePerson || "—"}</td>
                           <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300 text-xs">
-                            {row.residualValue != null
-                              ? row.residualValue.toLocaleString("ru-RU") + " ₽"
+                            {row.residualValue != null && !isNaN(Number(row.residualValue))
+                              ? Number(row.residualValue).toLocaleString("ru-RU") + " ₽"
                               : "—"}
                           </td>
-                          <td className="px-3 py-2 text-red-500 text-xs">{row.error || ""}</td>
+                          <td className="px-3 py-2 text-red-500 text-xs">{row.error ?? ""}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -380,20 +447,20 @@ export default function ExcelImportModal({
 
               <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: "Добавлено", count: importLog.createdCount, color: "green" },
-                  { label: "Обновлено", count: importLog.updatedCount, color: "blue" },
-                  { label: "Пропущено", count: importLog.skippedCount, color: "gray" },
-                  { label: "Ошибок", count: importLog.errorCount, color: "red" },
+                  { label: "Добавлено", count: importLog.createdCount  ?? 0, color: "green" },
+                  { label: "Обновлено", count: importLog.updatedCount  ?? 0, color: "blue" },
+                  { label: "Пропущено", count: importLog.skippedCount  ?? 0, color: "gray" },
+                  { label: "Ошибок",    count: importLog.errorCount    ?? 0, color: "red" },
                 ].map(({ label, count, color }) => (
                   <div key={label} className={`p-4 rounded-xl text-center
                     ${color === "green" ? "bg-green-50 dark:bg-green-900/20" :
-                      color === "blue" ? "bg-blue-50 dark:bg-blue-900/20" :
-                      color === "red" ? "bg-red-50 dark:bg-red-900/20" :
+                      color === "blue"  ? "bg-blue-50 dark:bg-blue-900/20" :
+                      color === "red"   ? "bg-red-50 dark:bg-red-900/20" :
                       "bg-gray-50 dark:bg-slate-800"}`}>
                     <div className={`text-2xl font-bold
                       ${color === "green" ? "text-green-600" :
-                        color === "blue" ? "text-blue-600" :
-                        color === "red" ? "text-red-600" : "text-gray-600"}`}>
+                        color === "blue"  ? "text-blue-600" :
+                        color === "red"   ? "text-red-600" : "text-gray-600"}`}>
                       {count}
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">{label}</div>
@@ -401,15 +468,15 @@ export default function ExcelImportModal({
                 ))}
               </div>
 
-              {/* Errors list */}
+              {/* Errors list — safe JSON parse */}
               {importLog.errors && (
                 <div className="rounded-xl border border-red-100 dark:border-red-900/50 overflow-hidden">
                   <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/50">
                     <span className="text-sm font-medium text-red-700 dark:text-red-300">Список ошибок</span>
                   </div>
-                  <div className="max-h-32 overflow-y-auto p-3 space-y-1">
-                    {JSON.parse(importLog.errors).map((e: string, i: number) => (
-                      <p key={i} className="text-xs text-red-600 dark:text-red-400">{e}</p>
+                  <div className="max-h-40 overflow-y-auto p-3 space-y-1">
+                    {parseErrors(importLog.errors).map((e, i) => (
+                      <p key={i} className="text-xs text-red-600 dark:text-red-400">• {e}</p>
                     ))}
                   </div>
                 </div>
@@ -451,19 +518,29 @@ export default function ExcelImportModal({
                 </button>
                 <button
                   onClick={handleImport}
-                  disabled={!preview || (preview.createCount + preview.updateCount === 0)}
+                  disabled={
+                    !preview ||
+                    ((preview.createCount ?? 0) + (preview.updateCount ?? 0) === 0)
+                  }
                   className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium
                     hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Upload className="w-4 h-4" />
-                  Импортировать {preview ? `(${preview.createCount + preview.updateCount})` : ""}
+                  Импортировать{" "}
+                  {preview ? `(${(preview.createCount ?? 0) + (preview.updateCount ?? 0)})` : ""}
                 </button>
               </>
             )}
 
             {step === "done" && (
               <button
-                onClick={() => { setStep("upload"); setFile(null); setPreview(null); setImportLog(null); }}
+                onClick={() => {
+                  setStep("upload");
+                  setFile(null);
+                  setPreview(null);
+                  setImportLog(null);
+                  setError("");
+                }}
                 className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors"
               >
                 <Upload className="w-4 h-4" />

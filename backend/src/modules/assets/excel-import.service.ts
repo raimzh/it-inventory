@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import { Asset, AssetStatus } from './entities/asset.entity';
@@ -51,7 +51,7 @@ export interface PreviewRow {
   residualValue?: number;
   status?: string;
   error?: string;
-  raw: Record<string, any>;
+  // NOTE: 'raw' intentionally NOT included — it would bloat the response payload
 }
 
 export interface PreviewResult {
@@ -70,7 +70,7 @@ export class ExcelImportService {
     @InjectRepository(Asset)   private assetRepo: Repository<Asset>,
     @InjectRepository(AssetHistory) private historyRepo: Repository<AssetHistory>,
     @InjectRepository(ImportLog) private logRepo: Repository<ImportLog>,
-    private dataSource: DataSource,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // ─── Generate template ────────────────────────────────────────────────────
@@ -149,7 +149,14 @@ export class ExcelImportService {
   // ─── Parse sheet into raw rows ────────────────────────────────────────────
   private async parseSheet(buffer: Buffer): Promise<{ headers: string[]; rows: Record<string, any>[] }> {
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
+    try {
+      await wb.xlsx.load(buffer);
+    } catch (e: any) {
+      // ExcelJS only supports .xlsx/.xlsm. Old .xls (BIFF) files may fail here.
+      throw new BadRequestException(
+        'Не удалось прочитать файл. Убедитесь, что файл имеет формат .xlsx (не повреждён и не защищён паролем).',
+      );
+    }
 
     const ws = wb.worksheets[0];
     if (!ws) throw new BadRequestException('Excel файл не содержит листов');
@@ -253,18 +260,18 @@ export class ExcelImportService {
       const name   = String(raw['Наименование'] ?? '').trim();
 
       if (!invNum) {
-        result.push({ rowNum, action: 'error', inventoryNumber: '', name, error: 'Пустой инвентарный номер', raw });
+        result.push({ rowNum, action: 'error', inventoryNumber: '', name, error: 'Пустой инвентарный номер' });
         errorCount++; continue;
       }
       if (!name) {
-        result.push({ rowNum, action: 'error', inventoryNumber: invNum, name: '', error: 'Пустое наименование', raw });
+        result.push({ rowNum, action: 'error', inventoryNumber: invNum, name: '', error: 'Пустое наименование' });
         errorCount++; continue;
       }
 
       const mapped = this.mapRow(raw);
 
       if (seen.has(invNum)) {
-        result.push({ rowNum, action: 'skip', inventoryNumber: invNum, name, error: 'Дубликат в файле', raw });
+        result.push({ rowNum, action: 'skip', inventoryNumber: invNum, name, error: 'Дубликат в файле' });
         skipCount++; continue;
       }
       seen.add(invNum);
@@ -274,11 +281,10 @@ export class ExcelImportService {
 
       result.push({
         rowNum, action, inventoryNumber: invNum, name,
-        departmentName: mapped.departmentName,
-        responsiblePerson: mapped.responsiblePerson,
-        residualValue: mapped.residualValue as number,
-        status: mapped.status,
-        raw,
+        departmentName: mapped.departmentName as string | undefined,
+        responsiblePerson: mapped.responsiblePerson as string | undefined,
+        residualValue: mapped.residualValue as number | undefined,
+        status: mapped.status as string | undefined,
       });
     }
 

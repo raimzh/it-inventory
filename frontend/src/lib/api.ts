@@ -111,21 +111,20 @@ export const usersApi = {
 };
 
 // Excel Import
+// IMPORTANT: Do NOT set Content-Type manually for FormData requests.
+// The browser must add the multipart boundary automatically; overriding it breaks parsing.
 export const excelApi = {
-  downloadTemplate: () => `${API_URL}/assets/excel/template`,
+  downloadTemplate: () =>
+    api.get('/assets/excel/template', { responseType: 'blob' }),
   preview: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return api.post('/assets/excel/preview', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post('/assets/excel/preview', fd);
   },
   importFile: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return api.post('/assets/excel/import', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post('/assets/excel/import', fd);
   },
   getLogs: (limit = 20) => api.get(`/assets/excel/logs?limit=${limit}`),
 };
