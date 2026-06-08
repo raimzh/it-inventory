@@ -28,8 +28,10 @@ async function proxy(req: NextRequest, { params }: { params: { path: string[] } 
 
     const respHeaders = new Headers();
     response.headers.forEach((value, key) => {
-      // Skip hop-by-hop headers
-      if (!["connection", "transfer-encoding", "keep-alive"].includes(key.toLowerCase())) {
+      // Skip hop-by-hop and encoding headers (fetch() already decompresses the body,
+      // so forwarding Content-Encoding would cause ERR_CONTENT_DECODING_FAILED)
+      const skip = ["connection", "transfer-encoding", "keep-alive", "content-encoding"];
+      if (!skip.includes(key.toLowerCase())) {
         respHeaders.set(key, value);
       }
     });
