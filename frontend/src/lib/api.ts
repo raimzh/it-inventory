@@ -110,6 +110,26 @@ export const usersApi = {
   delete: (id: string) => api.delete(`/users/${id}`),
 };
 
+// Excel Import
+export const excelApi = {
+  downloadTemplate: () => `${API_URL}/assets/excel/template`,
+  preview: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/assets/excel/preview', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  importFile: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/assets/excel/import', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getLogs: (limit = 20) => api.get(`/assets/excel/logs?limit=${limit}`),
+};
+
 // Backup
 export const backupApi = {
   list: () => api.get("/backup"),

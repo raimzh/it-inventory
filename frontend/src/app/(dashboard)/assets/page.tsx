@@ -7,9 +7,12 @@ import { Header } from "@/components/layout/Header";
 import { AssetStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import ExcelImportModal from "@/components/assets/ExcelImportModal";
 import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
-import { Download, Plus, Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Download, Plus, Search, X, ChevronLeft, ChevronRight, Upload, FileSpreadsheet,
+} from "lucide-react";
 
 const STATUSES = Object.entries(ASSET_STATUS_LABELS) as [AssetStatus, string][];
 
@@ -25,10 +28,14 @@ export default function AssetsPage() {
   const [bulkModal, setBulkModal] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<AssetStatus>("active");
   const [exportLoading, setExportLoading] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["assets", search, statusFilter, deptFilter, page],
-    queryFn: () => assetsApi.getAll({ search, status: statusFilter || undefined, departmentId: deptFilter || undefined, page, limit: 25 }).then(r => r.data),
+    queryFn: () =>
+      assetsApi
+        .getAll({ search, status: statusFilter || undefined, departmentId: deptFilter || undefined, page, limit: 25 })
+        .then(r => r.data),
     placeholderData: (prev: any) => prev,
   });
 
@@ -39,7 +46,11 @@ export default function AssetsPage() {
 
   const bulkMutation = useMutation({
     mutationFn: () => assetsApi.bulkUpdate(selected, { status: bulkStatus }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["assets"] }); setSelected([]); setBulkModal(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      setSelected([]);
+      setBulkModal(false);
+    },
   });
 
   const handleExport = async () => {
@@ -47,15 +58,20 @@ export default function AssetsPage() {
     try {
       const { data: blob } = await reportsApi.exportAssets();
       downloadBlob(blob, `assets-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    } finally { setExportLoading(false); }
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const toggleSelect = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleAll = () =>
-    setSelected(prev => prev.length === (data?.data?.length || 0) ? [] : (data?.data?.map((a: Asset) => a.id) || []));
+    setSelected(prev =>
+      prev.length === (data?.data?.length || 0) ? [] : (data?.data?.map((a: Asset) => a.id) || [])
+    );
 
   const canEdit = user && ["admin", "accountant", "inventorizer"].includes(user.role);
+  const canImport = user && ["admin", "accountant"].includes(user.role);
   const hasFilters = !!(search || statusFilter || deptFilter);
 
   return (
@@ -66,15 +82,33 @@ export default function AssetsPage() {
             Изменить статус ({selected.length})
           </Button>
         )}
+
+        {/* Excel export */}
         <Button
           variant="secondary" size="sm"
           loading={exportLoading} onClick={handleExport}
           icon={<Download className="w-3.5 h-3.5" />}
         >
-          Excel
+          Скачать Excel
         </Button>
+
+        {/* Excel import — visible to admin/accountant */}
+        {canImport && (
+          <Button
+            variant="secondary" size="sm"
+            onClick={() => setShowImport(true)}
+            icon={<Upload className="w-3.5 h-3.5" />}
+          >
+            Загрузить Excel
+          </Button>
+        )}
+
         {canEdit && (
-          <Button size="sm" onClick={() => router.push("/assets/new")} icon={<Plus className="w-3.5 h-3.5" />}>
+          <Button
+            size="sm"
+            onClick={() => router.push("/assets/new")}
+            icon={<Plus className="w-3.5 h-3.5" />}
+          >
             Добавить
           </Button>
         )}
@@ -110,104 +144,162 @@ export default function AssetsPage() {
               {depts?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             {hasFilters && (
-              <Button variant="ghost" size="sm"
+              <Button
+                variant="ghost" size="sm"
                 icon={<X className="w-3.5 h-3.5" />}
-                onClick={() => { setSearch(""); setStatusFilter(""); setDeptFilter(""); setPage(1); }}>
+                onClick={() => { setSearch(""); setStatusFilter(""); setDeptFilter(""); setPage(1); }}
+              >
                 Сбросить
               </Button>
             )}
           </div>
         </div>
 
-        {/* Table */}
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
-                <tr>
-                  {canEdit && (
-                    <th className="w-10 px-4 py-3">
-                      <input
-                        type="checkbox"
-                        className="rounded border-gray-300 dark:border-slate-600 text-primary-600 cursor-pointer"
-                        checked={selected.length === (data?.data?.length || 0) && selected.length > 0}
-                        onChange={toggleAll}
-                      />
-                    </th>
-                  )}
-                  <th className="th">Инв. номер</th>
-                  <th className="th">Наименование</th>
-                  <th className="th hidden md:table-cell">Подразделение</th>
-                  <th className="th hidden lg:table-cell">Ответственный</th>
-                  <th className="th hidden xl:table-cell text-right">Стоимость, ₽</th>
-                  <th className="th">Статус</th>
-                  <th className="th text-right">Действия</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
-                {isLoading
-                  ? Array(8).fill(0).map((_, i) => (
-                    <tr key={i}>
-                      {canEdit && <td className="px-4 py-3.5"><div className="skeleton h-4 w-4 rounded" /></td>}
-                      <td className="td"><div className="skeleton h-4 w-24" /></td>
-                      <td className="td"><div className="skeleton h-4 w-48" /></td>
-                      <td className="td hidden md:table-cell"><div className="skeleton h-4 w-32" /></td>
-                      <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-32" /></td>
-                      <td className="td hidden xl:table-cell"><div className="skeleton h-4 w-20" /></td>
-                      <td className="td"><div className="skeleton h-5 w-20 rounded-full" /></td>
-                      <td className="td" />
-                    </tr>
-                  ))
-                  : data?.data?.map((asset: Asset) => (
-                    <tr key={asset.id} className="tr-hover cursor-pointer" onClick={() => router.push(`/assets/${asset.id}`)}>
-                      {canEdit && (
-                        <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            className="rounded border-gray-300 dark:border-slate-600 text-primary-600 cursor-pointer"
-                            checked={selected.includes(asset.id)}
-                            onChange={() => toggleSelect(asset.id)}
-                          />
-                        </td>
-                      )}
-                      <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">{asset.inventoryNumber}</td>
-                      <td className="td font-semibold text-gray-900 dark:text-white max-w-xs truncate">{asset.name}</td>
-                      <td className="td text-gray-500 dark:text-slate-400 hidden md:table-cell">{asset.departmentName || "—"}</td>
-                      <td className="td text-gray-500 dark:text-slate-400 hidden lg:table-cell">{asset.responsiblePerson || "—"}</td>
-                      <td className="td text-right text-gray-600 dark:text-slate-400 hidden xl:table-cell tabular-nums">
-                        {Number(asset.residualValue).toLocaleString("ru-RU")}
-                      </td>
-                      <td className="td"><AssetStatusBadge status={asset.status} /></td>
-                      <td className="td text-right" onClick={e => e.stopPropagation()}>
-                        <Button variant="ghost" size="xs" onClick={() => router.push(`/assets/${asset.id}`)}>
-                          Открыть
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {data && data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 dark:border-slate-800">
-              <p className="text-xs text-gray-500 dark:text-slate-400 tabular-nums">
-                {(page - 1) * 25 + 1}–{Math.min(page * 25, data.total)} из {data.total}
-              </p>
-              <div className="flex gap-1.5">
-                <Button variant="secondary" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}
-                  icon={<ChevronLeft className="w-3.5 h-3.5" />} />
-                <Button variant="secondary" size="sm" disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}
-                  icon={<ChevronRight className="w-3.5 h-3.5" />} />
-              </div>
+        {/* Empty state with import hint */}
+        {!isLoading && (!data?.data?.length) && (
+          <div className="card flex flex-col items-center justify-center py-20 gap-4">
+            <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 rounded-2xl flex items-center justify-center">
+              <FileSpreadsheet className="w-8 h-8 text-primary-400" />
             </div>
-          )}
-        </div>
+            <div className="text-center">
+              <p className="font-semibold text-gray-700 dark:text-slate-300 text-base">
+                {hasFilters ? "Ничего не найдено" : "Основные средства не добавлены"}
+              </p>
+              {!hasFilters && canImport && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Добавьте ОС вручную или{" "}
+                  <button
+                    onClick={() => setShowImport(true)}
+                    className="text-primary-600 hover:underline font-medium"
+                  >
+                    загрузите из Excel
+                  </button>
+                </p>
+              )}
+            </div>
+            {!hasFilters && canImport && (
+              <Button
+                onClick={() => setShowImport(true)}
+                icon={<Upload className="w-4 h-4" />}
+              >
+                Загрузить из Excel
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Table */}
+        {(isLoading || !!data?.data?.length) && (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
+                  <tr>
+                    {canEdit && (
+                      <th className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 dark:border-slate-600 text-primary-600 cursor-pointer"
+                          checked={selected.length === (data?.data?.length || 0) && selected.length > 0}
+                          onChange={toggleAll}
+                        />
+                      </th>
+                    )}
+                    <th className="th">Инв. номер</th>
+                    <th className="th">Наименование</th>
+                    <th className="th hidden md:table-cell">Подразделение</th>
+                    <th className="th hidden lg:table-cell">Ответственный</th>
+                    <th className="th hidden xl:table-cell text-right">Стоимость, ₽</th>
+                    <th className="th">Статус</th>
+                    <th className="th text-right">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
+                  {isLoading
+                    ? Array(8).fill(0).map((_, i) => (
+                      <tr key={i}>
+                        {canEdit && <td className="px-4 py-3.5"><div className="skeleton h-4 w-4 rounded" /></td>}
+                        <td className="td"><div className="skeleton h-4 w-24" /></td>
+                        <td className="td"><div className="skeleton h-4 w-48" /></td>
+                        <td className="td hidden md:table-cell"><div className="skeleton h-4 w-32" /></td>
+                        <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-32" /></td>
+                        <td className="td hidden xl:table-cell"><div className="skeleton h-4 w-20" /></td>
+                        <td className="td"><div className="skeleton h-5 w-20 rounded-full" /></td>
+                        <td className="td" />
+                      </tr>
+                    ))
+                    : data?.data?.map((asset: Asset) => (
+                      <tr
+                        key={asset.id}
+                        className="tr-hover cursor-pointer"
+                        onClick={() => router.push(`/assets/${asset.id}`)}
+                      >
+                        {canEdit && (
+                          <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 dark:border-slate-600 text-primary-600 cursor-pointer"
+                              checked={selected.includes(asset.id)}
+                              onChange={() => toggleSelect(asset.id)}
+                            />
+                          </td>
+                        )}
+                        <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">
+                          {asset.inventoryNumber}
+                        </td>
+                        <td className="td font-semibold text-gray-900 dark:text-white max-w-xs truncate">
+                          {asset.name}
+                        </td>
+                        <td className="td text-gray-500 dark:text-slate-400 hidden md:table-cell">
+                          {asset.departmentName || "—"}
+                        </td>
+                        <td className="td text-gray-500 dark:text-slate-400 hidden lg:table-cell">
+                          {asset.responsiblePerson || "—"}
+                        </td>
+                        <td className="td text-right text-gray-600 dark:text-slate-400 hidden xl:table-cell tabular-nums">
+                          {Number(asset.residualValue).toLocaleString("ru-RU")}
+                        </td>
+                        <td className="td"><AssetStatusBadge status={asset.status} /></td>
+                        <td className="td text-right" onClick={e => e.stopPropagation()}>
+                          <Button
+                            variant="ghost" size="xs"
+                            onClick={() => router.push(`/assets/${asset.id}`)}
+                          >
+                            Открыть
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {data && data.totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 dark:border-slate-800">
+                <p className="text-xs text-gray-500 dark:text-slate-400 tabular-nums">
+                  {(page - 1) * 25 + 1}–{Math.min(page * 25, data.total)} из {data.total}
+                </p>
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="secondary" size="sm"
+                    disabled={page === 1} onClick={() => setPage(p => p - 1)}
+                    icon={<ChevronLeft className="w-3.5 h-3.5" />}
+                  />
+                  <Button
+                    variant="secondary" size="sm"
+                    disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}
+                    icon={<ChevronRight className="w-3.5 h-3.5" />}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Bulk modal */}
+      {/* Bulk status modal */}
       <Modal open={bulkModal} onClose={() => setBulkModal(false)} title={`Изменить статус (${selected.length} ОС)`}>
         <div className="space-y-5">
           <div>
@@ -222,6 +314,17 @@ export default function AssetsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Excel Import Modal */}
+      {showImport && (
+        <ExcelImportModal
+          onClose={() => setShowImport(false)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["assets"] });
+            qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+          }}
+        />
+      )}
     </div>
   );
 }
