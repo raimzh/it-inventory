@@ -150,7 +150,10 @@ export class ExcelImportService {
   private async parseSheet(buffer: Buffer): Promise<{ headers: string[]; rows: Record<string, any>[] }> {
     const wb = new ExcelJS.Workbook();
     try {
-      await wb.xlsx.load(buffer);
+      // Cast needed: newer @types/node types Buffer<ArrayBufferLike> which
+      // is incompatible with ExcelJS's older Buffer type definition.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (wb.xlsx.load as any)(buffer);
     } catch (e: any) {
       // ExcelJS only supports .xlsx/.xlsm. Old .xls (BIFF) files may fail here.
       throw new BadRequestException(
@@ -344,7 +347,10 @@ export class ExcelImportService {
             updatedCount++;
           } else {
             // Create
-            const asset = assetRepo.create(mapped as any);
+            // Explicit cast to Asset (not Asset[]) so TypeScript picks the
+            // single-entity overload of save() and knows saved.id exists.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const asset = assetRepo.create(mapped as any) as unknown as Asset;
             const saved = await assetRepo.save(asset);
             await assetRepo.update(saved.id, {
               qrCode: `INV:${saved.inventoryNumber}|ID:${saved.id}`,
