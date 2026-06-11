@@ -38,7 +38,8 @@ export default function LoginPage() {
       await login(username, password);
       router.replace("/dashboard");
     } catch (err: any) {
-      setError(err.response?.data?.message?.error || "Неверный логин или пароль");
+      const msg = err.response?.data?.message;
+      setError(typeof msg === "string" ? msg : "Неверный логин или пароль");
     }
   };
 
@@ -129,7 +130,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   className="input"
-                  placeholder="admin"
+                  placeholder="r.zhuman"
                   required
                   autoComplete="username"
                   autoFocus
@@ -168,7 +169,7 @@ export default function LoginPage() {
 
             <div className="mt-6 pt-5 border-t border-gray-100 dark:border-slate-800">
               <p className="text-xs text-gray-400 dark:text-slate-500 text-center">
-                По умолчанию: <code className="font-mono text-gray-500 dark:text-slate-400">admin</code> / <code className="font-mono text-gray-500 dark:text-slate-400">Admin@123</code>
+                По умолчанию: <code className="font-mono text-gray-500 dark:text-slate-400">r.zhuman</code> / <code className="font-mono text-gray-500 dark:text-slate-400">Ktms2026!</code>
               </p>
             </div>
           </div>

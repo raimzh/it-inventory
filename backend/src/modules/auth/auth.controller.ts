@@ -1,4 +1,4 @@
-﻿import { Controller, Post, Get, Body, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+﻿import { Controller, Post, Get, Body, UseGuards, Request, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -17,7 +17,7 @@ export class AuthController {
   async login(@Body() loginDto: LoginDto) {
     const user = await this.authService.validateUser(loginDto.username, loginDto.password);
     if (!user) {
-      return { statusCode: 401, message: 'Неверный логин или пароль' };
+      throw new UnauthorizedException('Неверный логин или пароль');
     }
     return this.authService.login(user);
   }
