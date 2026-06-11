@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
-  UseGuards, UseInterceptors, UploadedFile, Res, StreamableFile,
+  UseGuards, UseInterceptors, UploadedFile, Res, StreamableFile, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
@@ -64,7 +64,7 @@ export class AssetsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Предварительный просмотр данных из Excel' })
   async previewExcel(@UploadedFile() file: Express.Multer.File) {
-    if (!file) throw new Error('Файл не загружен');
+    if (!file) throw new BadRequestException('Файл не загружен. Пожалуйста, выберите файл .xlsx');
     return this.excelImport.preview(file.buffer);
   }
 
@@ -82,7 +82,7 @@ export class AssetsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: any,
   ) {
-    if (!file) throw new Error('Файл не загружен');
+    if (!file) throw new BadRequestException('Файл не загружен. Пожалуйста, выберите файл .xlsx');
     return this.excelImport.importData(
       file.buffer, file.originalname,
       user?.id, user?.fullName,

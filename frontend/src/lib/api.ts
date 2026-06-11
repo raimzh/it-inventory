@@ -112,20 +112,26 @@ export const usersApi = {
 };
 
 // Excel Import
-// IMPORTANT: Do NOT set Content-Type manually for FormData requests.
-// The browser must add the multipart boundary automatically; overriding it breaks parsing.
+// IMPORTANT: The `api` instance sets a default Content-Type of application/json.
+// For FormData requests that default must be cleared (set to undefined), otherwise
+// axios JSON-encodes the FormData instead of sending it as multipart and the
+// browser never adds the multipart boundary.
 export const excelApi = {
   downloadTemplate: () =>
     api.get('/assets/excel/template', { responseType: 'blob' }),
   preview: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return api.post('/assets/excel/preview', fd);
+    return api.post('/assets/excel/preview', fd, {
+      headers: { 'Content-Type': undefined },
+    });
   },
   importFile: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return api.post('/assets/excel/import', fd);
+    return api.post('/assets/excel/import', fd, {
+      headers: { 'Content-Type': undefined },
+    });
   },
   getLogs: (limit = 20) => api.get(`/assets/excel/logs?limit=${limit}`),
 };
