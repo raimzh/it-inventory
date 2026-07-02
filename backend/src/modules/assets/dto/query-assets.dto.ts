@@ -1,4 +1,4 @@
-﻿import { IsOptional, IsString, IsEnum, IsNumber, Min } from 'class-validator';
+﻿import { IsOptional, IsString, IsEnum, IsNumber, IsIn, Min, Max } from 'class-validator';
 import { AssetStatus } from '../entities/asset.entity';
 
 export class QueryAssetsDto {
@@ -9,7 +9,8 @@ export class QueryAssetsDto {
   @IsOptional() @IsEnum(AssetStatus) status?: AssetStatus;
   @IsOptional() @IsString() category?: string;
   @IsOptional() @IsNumber() @Min(1) page?: number = 1;
-  @IsOptional() @IsNumber() @Min(1) limit?: number = 20;
+  // Max 100 — не даём вытащить всю таблицу одним запросом
+  @IsOptional() @IsNumber() @Min(1) @Max(100) limit?: number = 20;
   @IsOptional() @IsString() sortBy?: string = 'createdAt';
-  @IsOptional() @IsString() sortOrder?: 'ASC' | 'DESC' = 'DESC';
+  @IsOptional() @IsIn(['ASC', 'DESC']) sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }

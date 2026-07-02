@@ -8,6 +8,7 @@ dist/
 .next/
 out/
 build/
+*.tsbuildinfo
 
 # Env
 .env
@@ -41,3 +42,6 @@ __pycache__/
 *.pyd
 .Python
 *.egg-info/
+
+# Stray Django helper script — not part of this NestJS project
+create_admin.py

@@ -32,4 +32,6 @@ export class UpdateAssetDto {
   @IsOptional() @IsString() comment?: string;
   @IsOptional() @IsString() responsiblePerson?: string;
   @IsOptional() @IsUUID() departmentId?: string;
+  @IsOptional() @IsString() departmentName?: string;
+  @IsOptional() @IsString() category?: string;
 }

@@ -30,6 +30,18 @@ export const ASSET_STATUS_COLORS: Record<AssetStatus, string> = {
   decommissioned: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
 };
 
+// Предустановленные категории оборудования для выпадающего списка «Категория»
+export const ASSET_CATEGORIES = [
+  "Ноутбук",
+  "ПК",
+  "Монитор",
+  "Принтер",
+  "Проектор",
+  "Камера",
+  "Связь",
+  "GSM",
+] as const;
+
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   admin: "Администратор",
   accountant: "Бухгалтер",
@@ -89,6 +101,8 @@ export interface Department {
   id: string;
   name: string;
   code?: string;
+  parentId?: string;
+  createdAt?: string;
 }
 
 export interface SyncLog {

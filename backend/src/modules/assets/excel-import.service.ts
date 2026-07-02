@@ -5,6 +5,7 @@ import * as ExcelJS from 'exceljs';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
 import { ImportLog } from './entities/import-log.entity';
+import { AssetsService } from './assets.service';
 
 // ─── Column mapping (Excel header → entity field) ────────────────────────────
 const COLUMN_MAP: Record<string, keyof Asset | string> = {
@@ -71,6 +72,7 @@ export class ExcelImportService {
     @InjectRepository(AssetHistory) private historyRepo: Repository<AssetHistory>,
     @InjectRepository(ImportLog) private logRepo: Repository<ImportLog>,
     @InjectDataSource() private dataSource: DataSource,
+    private assetsService: AssetsService,
   ) {}
 
   // ─── Generate template ────────────────────────────────────────────────────
@@ -374,6 +376,9 @@ export class ExcelImportService {
       errorCount === 0 ? 'success'
       : createdCount + updatedCount > 0 ? 'partial'
       : 'failed';
+
+    // Импорт изменил состав ОС — сбрасываем кэш статистики дашборда
+    if (createdCount + updatedCount > 0) this.assetsService.invalidateStatsCache();
 
     const log = this.logRepo.create({
       userId, userName, fileName,

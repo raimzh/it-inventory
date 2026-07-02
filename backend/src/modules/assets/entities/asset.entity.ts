@@ -1,4 +1,4 @@
-﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Department } from '../../departments/entities/department.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -11,6 +11,13 @@ export enum AssetStatus {
 }
 
 @Entity('assets')
+// Индексы под реальные фильтры/сортировки (assets.service.ts findAll + getDashboardStats)
+@Index('idx_assets_status', ['status'])
+@Index('idx_assets_department_id', ['departmentId'])
+@Index('idx_assets_owner_id', ['ownerId'])
+@Index('idx_assets_category', ['category'])
+@Index('idx_assets_created_at', ['createdAt'])
+@Index('idx_assets_department_name', ['departmentName'])
 export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id: string;

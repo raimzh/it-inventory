@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { User, UserRole } from './modules/users/entities/user.entity';
+import { Department } from './modules/departments/entities/department.entity';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
@@ -67,6 +68,27 @@ async function bootstrap() {
     }
   } catch (e) {
     console.error('Seed error:', e.message);
+  }
+
+  // Seed default departments if none exist
+  try {
+    const deptRepo = app.get(getRepositoryToken(Department));
+    const count = await deptRepo.count();
+    if (count === 0) {
+      const defaultDepts = [
+        { name: 'Администрация', code: 'ADM' },
+        { name: 'Бухгалтерия', code: 'ACC' },
+        { name: 'IT-отдел', code: 'IT' },
+        { name: 'Отдел кадров', code: 'HR' },
+        { name: 'Производственный отдел', code: 'PROD' },
+        { name: 'Склад', code: 'WH' },
+        { name: 'Юридический отдел', code: 'LEGAL' },
+      ];
+      await deptRepo.save(defaultDepts.map(d => deptRepo.create(d)));
+      console.log(`Seeded ${defaultDepts.length} default departments`);
+    }
+  } catch (e) {
+    console.error('Department seed error:', e.message);
   }
 
   await app.listen(process.env.PORT || 3001);
