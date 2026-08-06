@@ -31,7 +31,10 @@ import { DepartmentsModule } from './modules/departments/departments.module';
         password: config.get('DB_PASSWORD', 'changeme'),
         database: config.get('DB_NAME', 'it_inventory'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: true,
+        // В продакшене схему не трогаем. При synchronize TypeORM приводит базу
+        // к описанию сущностей на каждом старте: переименование поля означает
+        // удаление старой колонки вместе с данными, и миграций для отката нет.
+        synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',
       }),
     }),
