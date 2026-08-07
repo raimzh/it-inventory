@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -54,6 +52,10 @@ services:
         condition: service_started
     environment:
       NODE_ENV: production
+      # В контейнере владелец схемы — сам пользователь приложения, поэтому
+      # миграции применяются на старте. Локально под PM2 наоборот: там роль
+      # без прав DDL и миграции прогоняются вручную.
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-it_inventory}
@@ -62,9 +64,17 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
-      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
-      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-superrefreshsecret}
+      # Без значений по умолчанию: приложение намеренно не стартует со слабым
+      # секретом (backend/src/config/env.validation.ts). Задайте их в .env.
+      JWT_SECRET: ${JWT_SECRET:?требуется JWT_SECRET — сгенерируйте стойкое значение}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-}
+      REFRESH_EXPIRES_IN: ${REFRESH_EXPIRES_IN:-7d}
+      # Учётная запись администратора создаётся при первом старте.
+      # Без них сид пропускается и войти в систему будет некому.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       APP_URL: ${APP_URL:-http://localhost}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       UPLOAD_DIR: /app/uploads

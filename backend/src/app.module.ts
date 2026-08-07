@@ -35,10 +35,14 @@ import { HealthModule } from './modules/health/health.module';
         database: config.get('DB_NAME', 'it_inventory'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        // Миграции НЕ запускаются под ролью приложения (itinv_app без прав DDL).
-        // Прогон вручную привилегированной ролью: `npm run migration:run`
-        // (см. package.json / README). Приложение только читает/пишет данные.
-        migrationsRun: false,
+        // Кто применяет миграции — зависит от развёртывания:
+        //  • локально под PM2 роль приложения (itinv_app) не имеет прав DDL,
+        //    поэтому миграции прогоняются вручную привилегированной ролью:
+        //    `npm run migration:run`. Здесь RUN_MIGRATIONS не задаётся.
+        //  • в Docker/облаке владелец схемы — сам пользователь приложения, и
+        //    без автопрогона контейнер поднимется на пустой базе (симптом:
+        //    «column ... does not exist»). Там RUN_MIGRATIONS=true.
+        migrationsRun: config.get('RUN_MIGRATIONS') === 'true',
         // В продакшене схему не трогаем. При synchronize TypeORM приводит базу
         // к описанию сущностей на каждом старте: переименование поля означает
         // удаление старой колонки вместе с данными, и миграций для отката нет.
