@@ -1,6 +1,6 @@
 ﻿import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AuthUser, setToken, removeToken, setStoredUser } from "@/lib/auth";
+import { AuthUser, setToken, setRefreshToken, removeToken, setStoredUser } from "@/lib/auth";
 import { authApi } from "@/lib/api";
 
 interface AuthState {
@@ -25,6 +25,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { data } = await authApi.login(username, password);
           setToken(data.accessToken);
+          if (data.refreshToken) setRefreshToken(data.refreshToken);
           setStoredUser(data.user);
           set({ user: data.user, token: data.accessToken, isLoading: false });
         } catch (err) {
@@ -34,6 +35,9 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        // Сообщаем серверу, чтобы он отозвал refresh-токены этой учётной записи.
+        // Ошибку глушим намеренно: локальный выход должен произойти в любом случае.
+        authApi.logout().catch(() => {});
         removeToken();
         set({ user: null, token: null });
       },

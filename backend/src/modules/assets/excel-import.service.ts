@@ -5,6 +5,7 @@ import * as ExcelJS from 'exceljs';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
 import { ImportLog } from './entities/import-log.entity';
+import { AssetsService } from './assets.service';
 
 // ─── Column mapping (Excel header → entity field) ────────────────────────────
 const COLUMN_MAP: Record<string, keyof Asset | string> = {
@@ -71,6 +72,7 @@ export class ExcelImportService {
     @InjectRepository(AssetHistory) private historyRepo: Repository<AssetHistory>,
     @InjectRepository(ImportLog) private logRepo: Repository<ImportLog>,
     @InjectDataSource() private dataSource: DataSource,
+    private assetsService: AssetsService,
   ) {}
 
   // ─── Generate template ────────────────────────────────────────────────────
@@ -359,7 +361,7 @@ export class ExcelImportService {
               await historyRepo.save({
                 assetId: saved.id, field: 'created', oldValue: null,
                 newValue: invNum, changedBy: userId, changedByName: userName, source: 'excel',
-              });
+              } as Partial<AssetHistory>);
             }
             createdCount++;
           }
@@ -375,13 +377,16 @@ export class ExcelImportService {
       : createdCount + updatedCount > 0 ? 'partial'
       : 'failed';
 
+    // Импорт изменил состав ОС — сбрасываем кэш статистики дашборда
+    if (createdCount + updatedCount > 0) this.assetsService.invalidateStatsCache();
+
     const log = this.logRepo.create({
       userId, userName, fileName,
       totalRows: rows.length,
       createdCount, updatedCount, skippedCount, errorCount,
       errors: errors.length ? JSON.stringify(errors.slice(0, 50)) : null,
       status,
-    });
+    } as Partial<ImportLog>) as unknown as ImportLog;
     return this.logRepo.save(log);
   }
 

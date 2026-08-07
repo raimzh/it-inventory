@@ -18,7 +18,8 @@ export class AuditInterceptor implements NestInterceptor {
       tap(async () => {
         if (user) {
           const resource = url.split('/')[1];
-          const action = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' }[method] || method.toLowerCase();
+          const actions: Record<string, string> = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
+          const action = actions[method] || method.toLowerCase();
           await this.auditService.log({
             userId: user.id, username: user.username,
             action, resource,

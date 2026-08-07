@@ -45,9 +45,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = String(raw);
     }
 
+    const requestId = (request as any).requestId;
+
     if (status >= 500) {
+      // JSON-строкой: такие логи можно грепать и разбирать машинно,
+      // в отличие от свободного текста.
       this.logger.error(
-        `${request.method} ${request.url} → ${message}`,
+        JSON.stringify({
+          requestId,
+          method: request.method,
+          path: request.url,
+          status,
+          message,
+          userId: (request as any).user?.id,
+          ip: request.ip,
+        }),
         exception instanceof Error ? exception.stack : '',
       );
     }
@@ -55,6 +67,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json({
       statusCode: status,
       message,                          // always a plain string now
+      // Идентификатор запроса отдаём клиенту: пользователь может назвать его
+      // при обращении, и запись сразу находится в логах.
+      requestId,
       timestamp: new Date().toISOString(),
       path: request.url,
     });

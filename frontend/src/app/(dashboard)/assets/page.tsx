@@ -8,8 +8,10 @@ import { AssetStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import ExcelImportModal from "@/components/assets/ExcelImportModal";
-import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department } from "@/types";
+import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department, ASSET_CATEGORIES } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
+import { useDebounce } from "@/hooks/useDebounce";
+import { toast } from "@/store/toast.store";
 import {
   Download, Plus, Search, X, ChevronLeft, ChevronRight, Upload, FileSpreadsheet,
 } from "lucide-react";
@@ -21,8 +23,10 @@ export default function AssetsPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 350);
   const [statusFilter, setStatusFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+  const [catFilter, setCatFilter] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkModal, setBulkModal] = useState(false);
@@ -31,10 +35,10 @@ export default function AssetsPage() {
   const [showImport, setShowImport] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["assets", search, statusFilter, deptFilter, page],
+    queryKey: ["assets", debouncedSearch, statusFilter, deptFilter, catFilter, page],
     queryFn: () =>
       assetsApi
-        .getAll({ search, status: statusFilter || undefined, departmentId: deptFilter || undefined, page, limit: 25 })
+        .getAll({ search: debouncedSearch, status: statusFilter || undefined, departmentId: deptFilter || undefined, category: catFilter || undefined, page, limit: 25 })
         .then(r => r.data),
     placeholderData: (prev: any) => prev,
   });
@@ -48,8 +52,14 @@ export default function AssetsPage() {
     mutationFn: () => assetsApi.bulkUpdate(selected, { status: bulkStatus }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success(`Статус обновлён (${selected.length})`);
       setSelected([]);
       setBulkModal(false);
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg.join(", ") : (msg || "Не удалось обновить статус"));
     },
   });
 
@@ -70,14 +80,16 @@ export default function AssetsPage() {
       prev.length === (data?.data?.length || 0) ? [] : (data?.data?.map((a: Asset) => a.id) || [])
     );
 
-  const canEdit = user && ["admin", "accountant", "inventorizer"].includes(user.role);
+  // Создание/массовые операции и выбор строк доступны только admin/accountant
+  // (бэкенд: POST /assets и POST /assets/bulk-update → admin, accountant)
+  const canManage = user && ["admin", "accountant"].includes(user.role);
   const canImport = user && ["admin", "accountant"].includes(user.role);
-  const hasFilters = !!(search || statusFilter || deptFilter);
+  const hasFilters = !!(search || statusFilter || deptFilter || catFilter);
 
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="Основные средства">
-        {canEdit && selected.length > 0 && (
+        {canManage && selected.length > 0 && (
           <Button variant="secondary" size="sm" onClick={() => setBulkModal(true)}>
             Изменить статус ({selected.length})
           </Button>
@@ -103,7 +115,7 @@ export default function AssetsPage() {
           </Button>
         )}
 
-        {canEdit && (
+        {canManage && (
           <Button
             size="sm"
             onClick={() => router.push("/assets/new")}
@@ -143,11 +155,19 @@ export default function AssetsPage() {
               <option value="">Все подразделения</option>
               {depts?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
+            <select
+              className="input w-44"
+              value={catFilter}
+              onChange={e => { setCatFilter(e.target.value); setPage(1); }}
+            >
+              <option value="">Все категории</option>
+              {ASSET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
             {hasFilters && (
               <Button
                 variant="ghost" size="sm"
                 icon={<X className="w-3.5 h-3.5" />}
-                onClick={() => { setSearch(""); setStatusFilter(""); setDeptFilter(""); setPage(1); }}
+                onClick={() => { setSearch(""); setStatusFilter(""); setDeptFilter(""); setCatFilter(""); setPage(1); }}
               >
                 Сбросить
               </Button>
@@ -195,7 +215,7 @@ export default function AssetsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
                   <tr>
-                    {canEdit && (
+                    {canManage && (
                       <th className="w-10 px-4 py-3">
                         <input
                           type="checkbox"
@@ -207,6 +227,7 @@ export default function AssetsPage() {
                     )}
                     <th className="th">Инв. номер</th>
                     <th className="th">Наименование</th>
+                    <th className="th hidden lg:table-cell">Категория</th>
                     <th className="th hidden md:table-cell">Подразделение</th>
                     <th className="th hidden lg:table-cell">Ответственный</th>
                     <th className="th hidden xl:table-cell text-right">Стоимость, ₽</th>
@@ -218,9 +239,10 @@ export default function AssetsPage() {
                   {isLoading
                     ? Array(8).fill(0).map((_, i) => (
                       <tr key={i}>
-                        {canEdit && <td className="px-4 py-3.5"><div className="skeleton h-4 w-4 rounded" /></td>}
+                        {canManage && <td className="px-4 py-3.5"><div className="skeleton h-4 w-4 rounded" /></td>}
                         <td className="td"><div className="skeleton h-4 w-24" /></td>
                         <td className="td"><div className="skeleton h-4 w-48" /></td>
+                        <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-24" /></td>
                         <td className="td hidden md:table-cell"><div className="skeleton h-4 w-32" /></td>
                         <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-32" /></td>
                         <td className="td hidden xl:table-cell"><div className="skeleton h-4 w-20" /></td>
@@ -234,7 +256,7 @@ export default function AssetsPage() {
                         className="tr-hover cursor-pointer"
                         onClick={() => router.push(`/assets/${asset.id}`)}
                       >
-                        {canEdit && (
+                        {canManage && (
                           <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                             <input
                               type="checkbox"
@@ -249,6 +271,9 @@ export default function AssetsPage() {
                         </td>
                         <td className="td font-semibold text-gray-900 dark:text-white max-w-xs truncate">
                           {asset.name}
+                        </td>
+                        <td className="td text-gray-500 dark:text-slate-400 hidden lg:table-cell">
+                          {asset.category || "—"}
                         </td>
                         <td className="td text-gray-500 dark:text-slate-400 hidden md:table-cell">
                           {asset.departmentName || "—"}

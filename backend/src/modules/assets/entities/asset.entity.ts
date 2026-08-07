@@ -1,4 +1,4 @@
-﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Department } from '../../departments/entities/department.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -11,6 +11,13 @@ export enum AssetStatus {
 }
 
 @Entity('assets')
+// Индексы под реальные фильтры/сортировки (assets.service.ts findAll + getDashboardStats)
+@Index('idx_assets_status', ['status'])
+@Index('idx_assets_department_id', ['departmentId'])
+@Index('idx_assets_owner_id', ['ownerId'])
+@Index('idx_assets_category', ['category'])
+@Index('idx_assets_created_at', ['createdAt'])
+@Index('idx_assets_department_name', ['departmentName'])
 export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -91,6 +98,12 @@ export class Asset {
 
   @Column({ nullable: true, length: 255 })
   barcode: string;
+
+  // Версия записи для оптимистичной блокировки. Увеличивается при каждом
+  // сохранении; клиент присылает свою версию, и расхождение означает, что
+  // карточку уже изменил кто-то другой (см. AssetsService.update).
+  @Column({ type: 'int', default: 1 })
+  version: number;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

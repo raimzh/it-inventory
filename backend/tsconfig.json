@@ -12,11 +12,13 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": false,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    // Свойства сущностей TypeORM инициализируются драйвером, а не конструктором,
+    // поэтому проверку «поле точно присвоено» отключаем — иначе каждое поле
+    // каждой сущности требует `!`.
+    "strictPropertyInitialization": false,
     "paths": {
       "@/*": ["src/*"]
     }

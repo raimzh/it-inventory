@@ -16,13 +16,41 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Access-токен живёт 30 минут. Чтобы пользователя не выбрасывало на форму входа
+// посреди работы, первый же 401 пробуем починить обменом refresh-токена и
+// повторяем исходный запрос. Параллельные 401 ждут одного общего обновления,
+// иначе каждый запрос затеет свой обмен и ротация токенов перебьёт сама себя.
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshAccessToken(): Promise<string> {
+  const refreshToken = Cookies.get("refresh_token");
+  if (!refreshToken) throw new Error("no refresh token");
+  const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+  Cookies.set("access_token", data.accessToken, { expires: 1, sameSite: "strict" });
+  Cookies.set("refresh_token", data.refreshToken, { expires: 7, sameSite: "strict" });
+  return data.accessToken;
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    const isLoginRequest = err.config?.url?.includes("/auth/login");
-    if (err.response?.status === 401 && !isLoginRequest) {
-      Cookies.remove("access_token");
-      if (typeof window !== "undefined") window.location.href = "/login";
+  async (err) => {
+    const original: any = err.config || {};
+    const url: string = original.url || "";
+    const isAuthCall = url.includes("/auth/login") || url.includes("/auth/refresh");
+
+    if (err.response?.status === 401 && !isAuthCall && !original._retried) {
+      original._retried = true;
+      try {
+        refreshPromise = refreshPromise || refreshAccessToken().finally(() => { refreshPromise = null; });
+        const token = await refreshPromise;
+        original.headers = { ...original.headers, Authorization: `Bearer ${token}` };
+        return api(original);
+      } catch {
+        // Обновиться не вышло — сессия действительно закончилась
+        Cookies.remove("access_token");
+        Cookies.remove("refresh_token");
+        if (typeof window !== "undefined") window.location.href = "/login";
+      }
     }
     return Promise.reject(err);
   }
@@ -33,6 +61,8 @@ export const authApi = {
   login: (username: string, password: string) =>
     api.post("/auth/login", { username, password }),
   getProfile: () => api.get("/auth/profile"),
+  refresh: (refreshToken: string) => api.post("/auth/refresh", { refreshToken }),
+  logout: () => api.post("/auth/logout"),
 };
 
 // Assets
@@ -147,6 +177,51 @@ export const backupApi = {
 // Audit
 export const auditApi = {
   getLogs: (params?: any) => api.get("/audit", { params }),
+};
+
+// Warehouse (Склад)
+export const warehouseApi = {
+  // номенклатура
+  listItems: (params?: any) => api.get("/warehouse/items", { params }),
+  getItem: (id: string) => api.get(`/warehouse/items/${id}`),
+  availableUnits: (id: string) => api.get(`/warehouse/items/${id}/available-units`),
+  createItem: (data: any) => api.post("/warehouse/items", data),
+  updateItem: (id: string, data: any) => api.patch(`/warehouse/items/${id}`, data),
+  deleteItem: (id: string) => api.delete(`/warehouse/items/${id}`),
+  setCompatibility: (id: string, compatibleItemIds: string[]) =>
+    api.put(`/warehouse/items/${id}/compatibility`, { compatibleItemIds }),
+  // операции
+  receipt: (data: any) => api.post("/warehouse/stock/receipt", data),
+  issue: (data: any) => api.post("/warehouse/stock/issue", data),
+  returnItems: (data: any) => api.post("/warehouse/stock/return", data),
+  writeOff: (data: any) => api.post("/warehouse/stock/write-off", data),
+  reverse: (id: string, reason?: string) => api.post(`/warehouse/movements/${id}/reverse`, { reason }),
+  journal: (params?: any) => api.get("/warehouse/movements", { params }),
+  // справочники
+  categories: () => api.get("/warehouse/categories"),
+  createCategory: (data: any) => api.post("/warehouse/categories", data),
+  warehouses: () => api.get("/warehouse/warehouses"),
+  createWarehouse: (data: any) => api.post("/warehouse/warehouses", data),
+  // сотрудники
+  listEmployees: (search?: string) => api.get("/warehouse/employees", { params: { search } }),
+  getEmployee: (id: string) => api.get(`/warehouse/employees/${id}`),
+  employeeHoldings: (id: string, params?: any) => api.get(`/warehouse/employees/${id}/holdings`, { params }),
+  createEmployee: (data: any) => api.post("/warehouse/employees", data),
+  // инвентаризация
+  listChecks: () => api.get("/warehouse/checks"),
+  getCheck: (id: string) => api.get(`/warehouse/checks/${id}`),
+  createCheck: (warehouseId: string) => api.post("/warehouse/checks", { warehouseId }),
+  submitCheck: (id: string, items: any[]) => api.post(`/warehouse/checks/${id}/submit`, { items }),
+  completeCheck: (id: string) => api.post(`/warehouse/checks/${id}/complete`),
+  // отчёты
+  reportToPurchase: () => api.get("/warehouse/reports/to-purchase"),
+  reportConsumption: (dateFrom?: string, dateTo?: string) =>
+    api.get("/warehouse/reports/consumption", { params: { dateFrom, dateTo } }),
+  reportHoldings: () => api.get("/warehouse/reports/holdings"),
+  exportJournal: (params?: any) =>
+    api.get("/warehouse/reports/export/journal", { params, responseType: "blob" }),
+  exportInventory: (checkId: string) =>
+    api.get(`/warehouse/reports/export/inventory/${checkId}`, { responseType: "blob" }),
 };
 
 // Helper: trigger Excel download

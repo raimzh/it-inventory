@@ -69,7 +69,9 @@ export default function InventoryPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory-sessions"] }),
   });
 
+  // Создание сессии и сканирование доступны инвентаризатору, закрытие — только admin/accountant
   const canEdit = user && ["admin", "accountant", "inventorizer"].includes(user.role);
+  const canClose = user && ["admin", "accountant"].includes(user.role);
   const sessions: InventorySession[] = sessionsData?.data || [];
   const items: InventoryItem[] = sessionItems?.data || [];
   const currentSession = sessions.find(s => s.id === activeSession);
@@ -200,7 +202,7 @@ export default function InventoryPage() {
                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                   Позиции <span className="text-gray-400 font-normal">({items.length})</span>
                 </h3>
-                {canEdit && currentSession?.status !== "closed" && (
+                {canClose && currentSession?.status !== "closed" && (
                   <Button
                     variant="secondary" size="sm"
                     loading={closeMutation.isPending}

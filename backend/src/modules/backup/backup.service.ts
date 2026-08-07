@@ -1,14 +1,19 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const execAsync = promisify(exec);
+// execFile, а не exec: не запускает shell, поэтому спецсимволы в пароле/путях
+// не могут превратиться в команду.
+const execFileAsync = promisify(execFile);
+
+/** Имя файла резервной копии, которое создаёт этот сервис. */
+const BACKUP_FILENAME_RE = /^backup-[0-9T:.\-]+\.sql$/;
 
 export interface BackupRecord {
   id: string; filename: string; path: string; size: number;
@@ -24,7 +29,7 @@ export class BackupService {
   @Cron(process.env.BACKUP_CRON || '0 2 * * *')
   async scheduledBackup() {
     this.logger.log('Scheduled backup started');
-    await this.createBackup(null, 'auto');
+    await this.createBackup(undefined, 'auto');
   }
 
   async createBackup(userId?: string, type = 'manual'): Promise<{ filename: string; size: number }> {
@@ -41,17 +46,22 @@ export class BackupService {
     const dbUser = this.config.get('DB_USER', 'inventory');
     const dbPass = this.config.get('DB_PASSWORD', 'changeme');
 
-    const cmd = `PGPASSWORD="${dbPass}" pg_dump -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${filepath}"`;
-
     try {
-      await execAsync(cmd);
+      // Пароль передаём через окружение процесса, а не в строке команды:
+      // PGPASSWORD="..." — синтаксис POSIX-шелла, на Windows он не работал вовсе
+      // (из-за этого ночной бэкап молча не создавал файлов).
+      await execFileAsync(
+        'pg_dump',
+        ['-h', String(dbHost), '-p', String(dbPort), '-U', String(dbUser), '-d', String(dbName), '-f', filepath],
+        { env: { ...process.env, PGPASSWORD: String(dbPass) } },
+      );
       const stats = fs.statSync(filepath);
       this.logger.log(`Backup created: ${filename} (${stats.size} bytes)`);
 
       // Clean old backups
       await this.cleanOldBackups(backupDir);
       return { filename, size: stats.size };
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Backup failed', err.message);
       throw new Error(`Backup failed: ${err.message}`);
     }
@@ -84,8 +94,21 @@ export class BackupService {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  /**
+   * Путь к файлу копии по имени. Имя приходит из URL, поэтому проверяется строго:
+   * без этого `../../..` в параметре давал чтение любого файла на диске.
+   */
   getBackupPath(filename: string): string {
-    const backupDir = this.config.get('BACKUP_DIR', '/app/backups');
-    return path.join(backupDir, filename);
+    if (!BACKUP_FILENAME_RE.test(filename)) {
+      throw new BadRequestException('Недопустимое имя файла резервной копии');
+    }
+    const backupDir = path.resolve(this.config.get('BACKUP_DIR', '/app/backups'));
+    // basename отсекает любые сегменты пути, resolve + проверка префикса —
+    // страховка на случай символических ссылок и нестандартных разделителей.
+    const resolved = path.resolve(backupDir, path.basename(filename));
+    if (path.relative(backupDir, resolved).startsWith('..')) {
+      throw new BadRequestException('Недопустимое имя файла резервной копии');
+    }
+    return resolved;
   }
 }

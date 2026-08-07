@@ -1,4 +1,5 @@
 "use client";
+import { useMemo, memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { assetsApi, syncApi } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
@@ -68,7 +69,8 @@ function StatCard({ title, value, sub, icon: Icon, iconBg, iconColor, valueColor
   );
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+// memo: тултип пересоздаётся recharts при каждом движении мыши над графиком
+const CustomTooltip = memo(function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl px-3 py-2 shadow-lg text-xs">
@@ -76,7 +78,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <p className="text-primary-600 dark:text-primary-400 font-bold">{payload[0].value} ОС</p>
     </div>
   );
-};
+});
 
 export default function DashboardPage() {
   const { data: statsData, isLoading } = useQuery<DashboardStats>({
@@ -95,16 +97,18 @@ export default function DashboardPage() {
   const active = stats?.byStatus?.find(s => s.status === "active");
   const notFound = stats?.byStatus?.find(s => s.status === "not_found");
 
-  const pieData = stats?.byStatus?.map(s => ({
+  // Пересчитываем только при смене данных: без этого новые массивы на каждый
+  // рендер заставляли recharts перерисовывать оба графика целиком.
+  const pieData = useMemo(() => stats?.byStatus?.map(s => ({
     name: ASSET_STATUS_LABELS[s.status as keyof typeof ASSET_STATUS_LABELS] || s.status,
     value: parseInt(s.count),
     color: STATUS_COLORS[s.status] || "#6b7280",
-  })) || [];
+  })) || [], [stats?.byStatus]);
 
-  const deptData = (stats?.byDepartment || []).slice(0, 8).map(d => ({
+  const deptData = useMemo(() => (stats?.byDepartment || []).slice(0, 8).map(d => ({
     name: d.department || "Без подразделения",
     count: parseInt(d.count),
-  }));
+  })), [stats?.byDepartment]);
 
   const lastSyncTime = lastSync?.finishedAt
     ? new Date(lastSync.finishedAt).toLocaleString("ru-RU")

@@ -13,7 +13,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get('JWT_SECRET', 'supersecretjwtkey'),
+      // Без значения по умолчанию: дефолтный секрет в публичном коде = подделка токенов.
+      secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
     });
   }
 

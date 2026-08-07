@@ -1,15 +1,17 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouter } from "next/navigation";
-import { assetsApi } from "@/lib/api";
+import { useParams, useRouter, notFound } from "next/navigation";
+import Image from "next/image";
+import { assetsApi, departmentsApi } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
 import { AssetStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { ASSET_STATUS_LABELS, AssetStatus, Asset } from "@/types";
+import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department, ASSET_CATEGORIES } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
-import { ArrowLeft, Pencil, QrCode, History, Paperclip, Calendar, Clock } from "lucide-react";
+import { toast } from "@/store/toast.store";
+import { ArrowLeft, Pencil, QrCode, History, Paperclip, Calendar, Clock, Trash2, AlertCircle } from "lucide-react";
 
 const STATUSES = Object.entries(ASSET_STATUS_LABELS) as [AssetStatus, string][];
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -21,6 +23,9 @@ const FIELD_LABELS: Record<string, string> = {
   status: "Статус",
   location: "Местоположение",
   comment: "Комментарий",
+  departmentId: "Подразделение",
+  departmentName: "Подразделение",
+  category: "Категория",
   created: "Создано",
 };
 
@@ -31,6 +36,7 @@ export default function AssetDetailPage() {
   const { user } = useAuthStore();
   const [editModal, setEditModal] = useState(false);
   const [qrModal, setQrModal] = useState(false);
+  const [deleteModal, setDeleteModal] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Asset>>({});
 
   const { data: asset, isLoading } = useQuery<Asset>({
@@ -50,23 +56,69 @@ export default function AssetDetailPage() {
     queryFn: () => assetsApi.getQrCode(id).then(r => r.data),
     enabled: qrModal,
   });
+  const { data: depts } = useQuery<Department[]>({
+    queryKey: ["departments"],
+    queryFn: () => departmentsApi.getAll().then(r => r.data),
+  });
 
+  const [editError, setEditError] = useState("");
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Asset>) => assetsApi.update(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["asset", id] });
       qc.invalidateQueries({ queryKey: ["asset-history", id] });
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       setEditModal(false);
+      setEditError("");
+      toast.success("Изменения сохранены");
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message;
+      const text = Array.isArray(msg) ? msg.join(", ") : (msg || "Не удалось сохранить изменения");
+      setEditError(text);
+      toast.error(text);
+      // 409 — карточку изменил другой пользователь. Подтягиваем свежие данные,
+      // чтобы человек увидел актуальное состояние и не сохранял поверх вслепую.
+      if (err.response?.status === 409) {
+        qc.invalidateQueries({ queryKey: ["asset", id] });
+      }
+    },
+  });
+
+  const [deleteError, setDeleteError] = useState("");
+  const deleteMutation = useMutation({
+    mutationFn: () => assetsApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("ОС удалено");
+      router.push("/assets");
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message;
+      const text = Array.isArray(msg) ? msg.join(", ") : (msg || "Не удалось удалить ОС");
+      setDeleteError(text);
+      toast.error(text);
     },
   });
 
   const openEdit = () => {
     if (!asset) return;
-    setEditForm({ status: asset.status, ownerName: asset.ownerName, responsiblePerson: asset.responsiblePerson, location: asset.location, comment: asset.comment });
+    setEditError("");
+    setEditForm({
+      status: asset.status, ownerName: asset.ownerName, responsiblePerson: asset.responsiblePerson,
+      location: asset.location, comment: asset.comment, departmentId: asset.departmentId || "",
+      category: asset.category || "",
+      // Версия на момент открытия формы — сервер отвергнет сохранение,
+      // если за это время карточку успел изменить кто-то другой
+      version: asset.version,
+    });
     setEditModal(true);
   };
 
   const canEdit = user && ["admin", "accountant", "inventorizer"].includes(user.role);
+  const canDelete = user && user.role === "admin";
 
   if (isLoading) {
     return (
@@ -77,7 +129,7 @@ export default function AssetDetailPage() {
   }
 
   if (!asset) {
-    return <div className="p-10 text-center text-gray-400">ОС не найдено</div>;
+    notFound();
   }
 
   const fields: [string, string | null][] = [
@@ -109,6 +161,11 @@ export default function AssetDetailPage() {
         <Button variant="secondary" size="sm" icon={<QrCode className="w-3.5 h-3.5" />} onClick={() => setQrModal(true)}>
           QR-код
         </Button>
+        {canDelete && (
+          <Button variant="danger" size="sm" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => setDeleteModal(true)}>
+            Удалить
+          </Button>
+        )}
       </Header>
 
       <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -182,8 +239,15 @@ export default function AssetDetailPage() {
             {files?.filter((f: any) => f.type === "photo").length ? (
               <div className="grid grid-cols-2 gap-2 mb-3">
                 {files.filter((f: any) => f.type === "photo").map((f: any) => (
-                  <div key={f.id} className="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-800">
-                    <img src={`${API_URL}/uploads/${f.filename}`} alt={f.originalName} className="w-full h-full object-cover" />
+                  <div key={f.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-800">
+                    {/* next/image отдаёт WebP/AVIF нужного размера и грузит вне экрана лениво */}
+                    <Image
+                      src={`${API_URL}/uploads/${f.filename}`}
+                      alt={f.originalName}
+                      fill
+                      sizes="(max-width: 768px) 50vw, 200px"
+                      className="object-cover"
+                    />
                   </div>
                 ))}
               </div>
@@ -224,11 +288,34 @@ export default function AssetDetailPage() {
 
       {/* Edit modal */}
       <Modal open={editModal} onClose={() => setEditModal(false)} title="Редактировать ОС" size="lg">
+        {editError && (
+          <div className="flex items-start gap-3 p-3.5 mb-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 text-sm text-red-700 dark:text-red-300">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            {editError}
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Статус</label>
             <select className="input" value={editForm.status || ""} onChange={e => setEditForm(f => ({ ...f, status: e.target.value as AssetStatus }))}>
               {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Подразделение</label>
+            <select className="input" value={editForm.departmentId || ""} onChange={e => setEditForm(f => ({ ...f, departmentId: e.target.value }))}>
+              <option value="">Не выбрано</option>
+              {depts?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Категория</label>
+            <select className="input" value={editForm.category || ""} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}>
+              <option value="">Не выбрано</option>
+              {ASSET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {editForm.category && !ASSET_CATEGORIES.includes(editForm.category as any) && (
+                <option value={editForm.category}>{editForm.category}</option>
+              )}
             </select>
           </div>
           <div>
@@ -250,7 +337,33 @@ export default function AssetDetailPage() {
         </div>
         <div className="flex justify-end gap-3 mt-5">
           <Button variant="secondary" onClick={() => setEditModal(false)}>Отмена</Button>
-          <Button loading={updateMutation.isPending} onClick={() => updateMutation.mutate(editForm)}>Сохранить</Button>
+          <Button loading={updateMutation.isPending} onClick={() => {
+            const { departmentId, ...rest } = editForm;
+            updateMutation.mutate(departmentId ? { ...rest, departmentId } : rest);
+          }}>Сохранить</Button>
+        </div>
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal open={deleteModal} onClose={() => { setDeleteModal(false); setDeleteError(""); }} title="Удалить ОС" size="sm">
+        <p className="text-sm text-gray-600 dark:text-slate-300">
+          Вы действительно хотите удалить <span className="font-semibold">{asset.name}</span> (инв. № {asset.inventoryNumber})?
+          Это действие необратимо.
+        </p>
+        <p className="text-xs text-gray-400 dark:text-slate-500 mt-2">
+          Если ОС загружается из 1С, она может появиться снова при следующей синхронизации.
+        </p>
+        {deleteError && (
+          <div className="flex items-start gap-3 p-3.5 mt-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 text-sm text-red-700 dark:text-red-300">
+            <Trash2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            {deleteError}
+          </div>
+        )}
+        <div className="flex justify-end gap-3 mt-5">
+          <Button variant="secondary" onClick={() => { setDeleteModal(false); setDeleteError(""); }}>Отмена</Button>
+          <Button variant="danger" loading={deleteMutation.isPending} onClick={() => { setDeleteError(""); deleteMutation.mutate(); }}>
+            Удалить
+          </Button>
         </div>
       </Modal>
 
@@ -260,7 +373,10 @@ export default function AssetDetailPage() {
           {qrCode ? (
             <>
               <div className="inline-block p-3 rounded-2xl bg-white border border-gray-100 dark:border-slate-700 shadow-sm mb-3">
-                <img src={qrCode} alt="QR code" className="w-44 h-44" />
+                {/* eslint-disable-next-line @next/next/no-img-element --
+                    QR приходит как base64 data-URL: оптимизировать нечего,
+                    next/image потребовал бы unoptimized и ничего не дал бы */}
+                <img src={qrCode} alt="QR-код основного средства" className="w-44 h-44" />
               </div>
               <p className="text-xs text-gray-400 font-mono mb-4">{asset.inventoryNumber}</p>
               <Button variant="secondary" size="sm" onClick={() => {

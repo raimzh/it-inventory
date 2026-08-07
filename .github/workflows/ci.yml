@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'chore/**', 'feat/**', 'fix/**']
+  pull_request:
+    branches: [main]
+
+# Отменяем предыдущий прогон той же ветки: гонять CI на устаревшем коммите незачем
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Совпадает с образом в Dockerfile — CI должен проверять то, что поедет в прод
+  NODE_VERSION: '20'
+
+jobs:
+  backend:
+    name: "Бэкенд: сборка, миграции, тесты"
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: it_inventory_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: it_inventory_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      # Значение только для CI, но обязано проходить проверку env.validation:
+      # не короче 16 символов и не из списка известных заглушек
+      JWT_SECRET: ci_jwt_secret_not_for_production_use_only
+      REFRESH_TOKEN_SECRET: ci_refresh_secret_not_for_production_use
+      JWT_EXPIRES_IN: 30m
+      ADMIN_USERNAME: ci_admin
+      ADMIN_PASSWORD: CiAdminPassw0rd!
+      ADMIN_EMAIL: ci@example.com
+      # NODE_ENV не production: synchronize создаёт базовые таблицы из сущностей,
+      # после чего миграции добавляют схему склада
+      NODE_ENV: test
+      RUN_MIGRATIONS: 'true'
+      PORT: '3009'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Установка зависимостей
+        working-directory: backend
+        run: npm ci
+
+      - name: Сборка
+        working-directory: backend
+        run: npm run build
+
+      # Схема собирается в два приёма, и порядок здесь принципиален.
+      # TypeORM применяет миграции ДО synchronize, а миграция склада ссылается
+      # на departments и users. На пустой базе одним запуском она падает
+      # («relation "departments" does not exist»), поэтому сначала поднимаем
+      # приложение без миграций — synchronize создаёт базовые таблицы из
+      # сущностей, — и только потом применяем миграции.
+      - name: Базовая схема (synchronize, без миграций)
+        working-directory: backend
+        env:
+          RUN_MIGRATIONS: 'false'
+        run: |
+          node dist/main.js > base.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:3009/health/ready > /dev/null; then
+              kill $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
+              echo "Базовая схема создана"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Приложение не поднялось за 90 секунд:"; cat base.log; exit 1
+
+      - name: Запуск приложения (применяет миграции)
+        working-directory: backend
+        run: |
+          node dist/main.js > backend.log 2>&1 &
+          echo $! > backend.pid
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:3009/health/ready > /dev/null; then
+              echo "Бэкенд готов"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Бэкенд не поднялся за 90 секунд:"; cat backend.log; exit 1
+
+      - name: Миграции применились
+        working-directory: backend
+        run: npm run migration:show
+
+      - name: Тесты складских движений
+        working-directory: backend
+        run: npm test
+
+      - name: Сквозные тесты API
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:e2e
+
+      - name: Остановка приложения
+        if: always()
+        working-directory: backend
+        run: kill "$(cat backend.pid)" 2>/dev/null || true
+
+      - name: Миграции откатываются и применяются повторно
+        working-directory: backend
+        run: |
+          npm run migration:revert
+          npm run migration:run
+
+      - name: Логи бэкенда при падении
+        if: failure()
+        working-directory: backend
+        run: tail -100 backend.log || true
+
+  frontend:
+    name: "Фронтенд: типы и сборка"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Установка зависимостей
+        working-directory: frontend
+        run: npm ci
+
+      - name: Проверка типов
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Сборка
+        working-directory: frontend
+        run: npm run build
+
+      - name: Сборка standalone (как в Docker и на Railway)
+        working-directory: frontend
+        env:
+          BUILD_STANDALONE: 'true'
+        run: npm run build
+
+  docker:
+    name: Сборка образов
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Образы только собираются: так ломающие правки в Dockerfile
+      # обнаруживаются до выката, а не при развёртывании
+      - name: Образ бэкенда
+        run: docker build -t it-inventory-backend:ci ./backend
+
+      - name: Образ фронтенда
+        run: docker build -t it-inventory-frontend:ci ./frontend
+
+      - name: Проверка конфигурации nginx
+        run: |
+          docker run --rm --entrypoint /bin/sh \
+            -v "${{ github.workspace }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "${{ github.workspace }}/nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro" \
+            nginx:alpine -c '
+              # upstream-хосты существуют только в сети compose, поэтому для
+              # проверки синтаксиса подменяем их на локальные адреса
+              sed -e "s/server backend:3001;/server 127.0.0.1:3001;/" \
+                  -e "s/server frontend:3000;/server 127.0.0.1:3000;/" \
+                  /etc/nginx/nginx.conf > /tmp/nginx.conf
+              nginx -t -c /tmp/nginx.conf
+            '

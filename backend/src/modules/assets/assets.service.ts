@@ -1,12 +1,14 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+﻿import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import * as QRCode from 'qrcode';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
 import { AssetFile } from './entities/asset-file.entity';
+import { Department } from '../departments/entities/department.entity';
 import { CreateAssetDto, UpdateAssetDto } from './dto/create-asset.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
+import { CacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class AssetsService {
@@ -14,7 +16,30 @@ export class AssetsService {
     @InjectRepository(Asset) private assetRepo: Repository<Asset>,
     @InjectRepository(AssetHistory) private historyRepo: Repository<AssetHistory>,
     @InjectRepository(AssetFile) private fileRepo: Repository<AssetFile>,
+    @InjectRepository(Department) private departmentRepo: Repository<Department>,
+    @InjectDataSource() private dataSource: DataSource,
+    private cache: CacheService,
   ) {}
+
+  // Кэш статистики дашборда. TTL ограничивает устаревание сверху, а явная
+  // инвалидация сбрасывает его сразу после любой мутации ОС — пользователь
+  // видит свежие цифры мгновенно. Хранилище общее (Redis, если настроен),
+  // иначе при нескольких инстансах сброс на одном не виден остальным.
+  private static readonly STATS_CACHE_KEY = 'assets:stats';
+  private static readonly STATS_TTL_MS = 20_000;
+
+  invalidateStatsCache() {
+    // Намеренно не ждём: сброс кэша не должен задерживать ответ на операцию
+    void this.cache.invalidate(AssetsService.STATS_CACHE_KEY);
+  }
+
+  private async syncDepartmentName<T extends { departmentId?: string; departmentName?: string }>(dto: T): Promise<T> {
+    if (dto.departmentId !== undefined && dto.departmentName === undefined) {
+      const dept = dto.departmentId ? await this.departmentRepo.findOne({ where: { id: dto.departmentId } }) : null;
+      dto.departmentName = dept?.name ?? null as any;
+    }
+    return dto;
+  }
 
   async findAll(query: QueryAssetsDto) {
     const { search, inventoryNumber, departmentId, ownerId, status, category, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'DESC' } = query;
@@ -56,8 +81,20 @@ export class AssetsService {
   }
 
   async create(dto: CreateAssetDto, userId?: string, userName?: string): Promise<Asset> {
+    await this.syncDepartmentName(dto);
     const asset = this.assetRepo.create(dto);
-    const saved = await this.assetRepo.save(asset);
+    let saved: Asset;
+    try {
+      saved = await this.assetRepo.save(asset);
+    } catch (e: any) {
+      // 23505 = unique_violation (инвентарный номер уже существует)
+      if (e?.code === '23505') {
+        throw new BadRequestException(
+          `ОС с инвентарным номером «${dto.inventoryNumber}» уже существует.`,
+        );
+      }
+      throw e;
+    }
 
     // Generate QR code data URL
     const qrData = `INV:${saved.inventoryNumber}|ID:${saved.id}`;
@@ -67,35 +104,66 @@ export class AssetsService {
       await this.historyRepo.save({
         assetId: saved.id, field: 'created', oldValue: null,
         newValue: saved.inventoryNumber, changedBy: userId, changedByName: userName, source: 'manual',
-      });
+      } as Partial<AssetHistory>);
     }
+    this.invalidateStatsCache();
     return this.findOne(saved.id);
   }
 
   async update(id: string, dto: UpdateAssetDto, userId?: string, userName?: string): Promise<Asset> {
-    const asset = await this.findOne(id);
-    const changedFields: AssetHistory[] = [];
+    await this.syncDepartmentName(dto);
+    // Версия не является полем данных — вынимаем её до сравнения изменений
+    const { version: clientVersion, ...changes } = dto as UpdateAssetDto & { version?: number };
 
-    for (const [key, value] of Object.entries(dto)) {
-      if (value !== undefined && asset[key] !== value) {
-        changedFields.push({
-          assetId: id, field: key,
-          oldValue: String(asset[key] ?? ''),
-          newValue: String(value ?? ''),
-          changedBy: userId, changedByName: userName, source: 'manual',
-        } as AssetHistory);
+    // Всё в одной транзакции: запись ОС и запись истории должны попасть
+    // в базу вместе, иначе история разъезжается с фактическим состоянием.
+    return this.dataSource.transaction(async (m) => {
+      // Блокируем строку на время проверки версии, чтобы два параллельных
+      // сохранения не прошли проверку одновременно.
+      const asset = await m.findOne(Asset, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!asset) throw new NotFoundException('ОС не найдено');
+
+      if (clientVersion !== undefined && Number(clientVersion) !== asset.version) {
+        throw new ConflictException(
+          'Карточку уже изменил другой пользователь. Обновите страницу, чтобы увидеть актуальные данные, и повторите правку.',
+        );
       }
-    }
 
-    await this.assetRepo.update(id, dto as any);
-    if (changedFields.length) await this.historyRepo.save(changedFields);
+      const changedFields: AssetHistory[] = [];
+      for (const [key, value] of Object.entries(changes)) {
+        const current = (asset as Record<string, any>)[key];
+        if (value !== undefined && current !== value) {
+          changedFields.push({
+            assetId: id, field: key,
+            oldValue: String(current ?? ''),
+            newValue: String(value ?? ''),
+            changedBy: userId, changedByName: userName, source: 'manual',
+          } as AssetHistory);
+        }
+      }
 
-    return this.findOne(id);
+      await m.update(Asset, id, { ...(changes as any), version: asset.version + 1 });
+      if (changedFields.length) await m.save(AssetHistory, changedFields);
+
+      this.invalidateStatsCache();
+      return m.findOneOrFail(Asset, { where: { id }, relations: ['department', 'owner'] });
+    });
   }
 
   async remove(id: string): Promise<void> {
     await this.findOne(id);
-    await this.assetRepo.delete(id);
+    try {
+      await this.assetRepo.delete(id);
+    } catch (e: any) {
+      // 23503 = foreign_key_violation (например, ОС включена в сессию инвентаризации)
+      if (e?.code === '23503') {
+        throw new BadRequestException(
+          'Невозможно удалить ОС: оно используется в инвентаризации. Сначала удалите связанные записи.',
+        );
+      }
+      throw e;
+    }
+    this.invalidateStatsCache();
   }
 
   async getHistory(assetId: string) {
@@ -128,6 +196,9 @@ export class AssetsService {
   }
 
   async getDashboardStats() {
+    const cached = await this.cache.get<any>(AssetsService.STATS_CACHE_KEY);
+    if (cached) return cached;
+
     const total = await this.assetRepo.count();
     const byStatus = await this.assetRepo.createQueryBuilder('a')
       .select('a.status', 'status').addSelect('COUNT(*)', 'count')
@@ -138,11 +209,39 @@ export class AssetsService {
     const totalValue = await this.assetRepo.createQueryBuilder('a')
       .select('SUM(a.residualValue)', 'total').getRawOne();
 
-    return { total, byStatus, byDepartment, totalResidualValue: totalValue?.total || 0 };
+    const data = { total, byStatus, byDepartment, totalResidualValue: totalValue?.total || 0 };
+    await this.cache.set(AssetsService.STATS_CACHE_KEY, data, AssetsService.STATS_TTL_MS);
+    return data;
   }
 
   async bulkUpdate(ids: string[], dto: UpdateAssetDto, userId?: string, userName?: string) {
-    const results = await Promise.all(ids.map(id => this.update(id, dto, userId, userName)));
-    return { updated: results.length };
+    if (!ids?.length) return { updated: 0 };
+    await this.syncDepartmentName(dto);
+
+    // 1 SELECT вместо N findOne — грузим все затронутые ОС разом
+    const assets = await this.assetRepo.find({ where: { id: In(ids) } });
+    if (!assets.length) return { updated: 0 };
+
+    // Историю изменений собираем в памяти, сравнивая с загруженными значениями
+    const history: AssetHistory[] = [];
+    for (const asset of assets) {
+      for (const [key, value] of Object.entries(dto)) {
+        if (value !== undefined && (asset as any)[key] !== value) {
+          history.push({
+            assetId: asset.id, field: key,
+            oldValue: String((asset as any)[key] ?? ''),
+            newValue: String(value ?? ''),
+            changedBy: userId, changedByName: userName, source: 'manual',
+          } as AssetHistory);
+        }
+      }
+    }
+
+    // 1 UPDATE ... WHERE id IN (...) + 1 batch INSERT истории
+    await this.assetRepo.update({ id: In(assets.map(a => a.id)) }, dto as any);
+    if (history.length) await this.historyRepo.save(history);
+
+    this.invalidateStatsCache();
+    return { updated: assets.length };
   }
 }

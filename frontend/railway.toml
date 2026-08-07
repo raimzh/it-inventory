@@ -1,6 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install && npm run build"
+# BUILD_STANDALONE=true обязателен: startCommand ниже запускает .next/standalone/server.js,
+# а standalone-режим в next.config.mjs включается только этим флагом (локально он выключен,
+# потому что несовместим с `next start`, которым проект запускается под PM2).
+buildCommand = "npm install && BUILD_STANDALONE=true npm run build"
 
 [deploy]
 startCommand = "node server.js"

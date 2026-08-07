@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SidebarProvider } from "@/components/layout/SidebarContext";
+import { Toaster } from "@/components/ui/Toaster";
 import { useAuthStore } from "@/store/auth.store";
 import { Package } from "lucide-react";
 
@@ -27,13 +28,14 @@ function LoadingScreen() {
 }
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
-  const { user, fetchProfile } = useAuthStore();
+  const { user, fetchProfile, logout } = useAuthStore();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     const token = Cookies.get("access_token");
     if (!token) {
+      logout();
       router.replace("/login");
       return;
     }
@@ -53,6 +55,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {children}
       </main>
+      <Toaster />
     </div>
   );
 }
