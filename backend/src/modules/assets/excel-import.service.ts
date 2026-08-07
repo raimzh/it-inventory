@@ -361,7 +361,7 @@ export class ExcelImportService {
               await historyRepo.save({
                 assetId: saved.id, field: 'created', oldValue: null,
                 newValue: invNum, changedBy: userId, changedByName: userName, source: 'excel',
-              });
+              } as Partial<AssetHistory>);
             }
             createdCount++;
           }
@@ -386,7 +386,7 @@ export class ExcelImportService {
       createdCount, updatedCount, skippedCount, errorCount,
       errors: errors.length ? JSON.stringify(errors.slice(0, 50)) : null,
       status,
-    });
+    } as Partial<ImportLog>) as unknown as ImportLog;
     return this.logRepo.save(log);
   }
 

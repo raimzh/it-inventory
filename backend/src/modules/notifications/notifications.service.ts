@@ -21,7 +21,7 @@ export class NotificationsService {
     if (!this.transporter) { this.logger.warn('Mail not configured'); return; }
     try {
       await this.transporter.sendMail({ from: this.config.get('MAIL_FROM'), to, subject, html });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Email send failed', err.message);
     }
   }
@@ -35,7 +35,7 @@ export class NotificationsService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
       });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Telegram send failed', err.message);
     }
   }

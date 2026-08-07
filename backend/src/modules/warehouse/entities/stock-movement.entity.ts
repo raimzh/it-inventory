@@ -22,7 +22,9 @@ export class StockMovement {
   @JoinColumn({ name: 'item_id' })
   item: Item;
 
-  @Column({ name: 'stock_unit_id', nullable: true })
+  // type указан явно: для union-типа (string | null) TypeScript эмитит в
+  // метаданные Object, и TypeORM не может вывести тип колонки сам.
+  @Column({ name: 'stock_unit_id', type: 'uuid', nullable: true })
   stockUnitId: string | null;
 
   @ManyToOne(() => StockUnit, { nullable: true })
@@ -42,7 +44,7 @@ export class StockMovement {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   quantity: number;
 
-  @Column({ name: 'employee_id', nullable: true })
+  @Column({ name: 'employee_id', type: 'uuid', nullable: true })
   employeeId: string | null;
 
   @ManyToOne(() => Employee, { nullable: true })
@@ -55,7 +57,7 @@ export class StockMovement {
   @Column({ type: 'text', nullable: true })
   reason: string;
 
-  @Column({ name: 'reversal_of', nullable: true })
+  @Column({ name: 'reversal_of', type: 'uuid', nullable: true })
   reversalOf: string | null;
 
   @Column({ name: 'performed_by', nullable: true })

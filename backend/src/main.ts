@@ -75,7 +75,7 @@ async function bootstrap() {
         console.log(`Admin user '${adminUsername}' created`);
       }
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('Seed error:', e.message);
   }
 
@@ -96,7 +96,7 @@ async function bootstrap() {
       await deptRepo.save(defaultDepts.map(d => deptRepo.create(d)));
       console.log(`Seeded ${defaultDepts.length} default departments`);
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('Department seed error:', e.message);
   }
 

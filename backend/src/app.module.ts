@@ -16,6 +16,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { WarehouseModule } from './modules/warehouse/warehouse.module';
     NotificationsModule,
     DepartmentsModule,
     WarehouseModule,
+    HealthModule,
   ],
   providers: [
     // Глобальный аудит действий (POST/PUT/PATCH/DELETE) аутентифицированных пользователей

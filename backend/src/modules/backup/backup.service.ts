@@ -29,7 +29,7 @@ export class BackupService {
   @Cron(process.env.BACKUP_CRON || '0 2 * * *')
   async scheduledBackup() {
     this.logger.log('Scheduled backup started');
-    await this.createBackup(null, 'auto');
+    await this.createBackup(undefined, 'auto');
   }
 
   async createBackup(userId?: string, type = 'manual'): Promise<{ filename: string; size: number }> {
@@ -61,7 +61,7 @@ export class BackupService {
       // Clean old backups
       await this.cleanOldBackups(backupDir);
       return { filename, size: stats.size };
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Backup failed', err.message);
       throw new Error(`Backup failed: ${err.message}`);
     }

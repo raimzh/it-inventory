@@ -22,6 +22,10 @@ interface OneCAsset {
   Category?: string;
   Manufacturer?: string;
   Model?: string;
+  // В зависимости от конфигурации базы 1С отдаёт реквизиты либо латиницей
+  // (стандартные), либо русскими именами («ИнвентарныйНомер» и т.п.),
+  // поэтому доступ по произвольному ключу здесь легитимен.
+  [key: string]: any;
 }
 
 @Injectable()
@@ -39,7 +43,7 @@ export class SyncService {
   @Cron(process.env.ONE_C_SYNC_CRON || '0 6 * * *')
   async scheduledSync() {
     this.logger.log('Scheduled 1C sync started');
-    await this.runSync(null, null, 'scheduler');
+    await this.runSync(undefined, undefined, 'scheduler');
   }
 
   async runSync(userId?: string, userName?: string, source = 'manual'): Promise<SyncLog> {
@@ -60,7 +64,7 @@ export class SyncService {
           status: SyncStatus.ERROR, finishedAt: new Date(),
           errors: [{ message: '1C URL не настроен. Укажите ONE_C_URL в конфигурации.' }] as any,
         });
-        return this.syncLogRepo.findOne({ where: { id: log.id } });
+        return this.syncLogRepo.findOneOrFail({ where: { id: log.id } });
       }
 
       const assets = await this.fetchFrom1C(oneCUrl);
@@ -78,7 +82,7 @@ export class SyncService {
       if (stats.errors.length > 0) {
         await this.notifications.sendSyncErrorNotification(stats.errors);
       }
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Sync failed', err.stack);
       await this.syncLogRepo.update(log.id, {
         status: SyncStatus.ERROR, finishedAt: new Date(),
@@ -88,7 +92,7 @@ export class SyncService {
       this.isRunning = false;
     }
 
-    return this.syncLogRepo.findOne({ where: { id: log.id } });
+    return this.syncLogRepo.findOneOrFail({ where: { id: log.id } });
   }
 
   private async fetchFrom1C(baseUrl: string): Promise<OneCAsset[]> {
@@ -140,7 +144,7 @@ export class SyncService {
           await this.assetRepo.save(this.assetRepo.create({ ...mapped, status: AssetStatus.ACTIVE }));
           created++;
         }
-      } catch (err) {
+      } catch (err: any) {
         errors.push({ inventoryNumber: raw.Code, error: err.message });
       }
     }
@@ -172,6 +176,6 @@ export class SyncService {
       errors: stats.errors,
     });
 
-    return this.syncLogRepo.findOne({ where: { id: log.id } });
+    return this.syncLogRepo.findOneOrFail({ where: { id: log.id } });
   }
 }

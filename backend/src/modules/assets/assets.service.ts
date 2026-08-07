@@ -99,7 +99,7 @@ export class AssetsService {
       await this.historyRepo.save({
         assetId: saved.id, field: 'created', oldValue: null,
         newValue: saved.inventoryNumber, changedBy: userId, changedByName: userName, source: 'manual',
-      });
+      } as Partial<AssetHistory>);
     }
     this.invalidateStatsCache();
     return this.findOne(saved.id);
@@ -111,10 +111,11 @@ export class AssetsService {
     const changedFields: AssetHistory[] = [];
 
     for (const [key, value] of Object.entries(dto)) {
-      if (value !== undefined && asset[key] !== value) {
+      const current = (asset as Record<string, any>)[key];
+      if (value !== undefined && current !== value) {
         changedFields.push({
           assetId: id, field: key,
-          oldValue: String(asset[key] ?? ''),
+          oldValue: String(current ?? ''),
           newValue: String(value ?? ''),
           changedBy: userId, changedByName: userName, source: 'manual',
         } as AssetHistory);

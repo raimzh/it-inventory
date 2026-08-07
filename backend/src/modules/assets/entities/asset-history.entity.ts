@@ -17,17 +17,19 @@ export class AssetHistory {
   @Column({ length: 100 })
   field: string;
 
+  // Колонки nullable в БД — отражаем это в типах, иначе strict-режим
+  // заставляет приводить типы на каждой записи истории.
   @Column({ name: 'old_value', type: 'text', nullable: true })
-  oldValue: string;
+  oldValue: string | null;
 
   @Column({ name: 'new_value', type: 'text', nullable: true })
-  newValue: string;
+  newValue: string | null;
 
   @Column({ name: 'changed_by', nullable: true })
-  changedBy: string;
+  changedBy?: string;
 
   @Column({ name: 'changed_by_name', nullable: true, length: 255 })
-  changedByName: string;
+  changedByName?: string;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'changed_by' })
