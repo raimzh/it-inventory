@@ -7,7 +7,10 @@
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "lint": "eslint src --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "migration:run": "typeorm migration:run -d dist/data-source.js",
+    "migration:revert": "typeorm migration:revert -d dist/data-source.js",
+    "migration:show": "typeorm migration:show -d dist/data-source.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

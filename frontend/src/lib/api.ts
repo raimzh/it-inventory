@@ -149,6 +149,51 @@ export const auditApi = {
   getLogs: (params?: any) => api.get("/audit", { params }),
 };
 
+// Warehouse (Склад)
+export const warehouseApi = {
+  // номенклатура
+  listItems: (params?: any) => api.get("/warehouse/items", { params }),
+  getItem: (id: string) => api.get(`/warehouse/items/${id}`),
+  availableUnits: (id: string) => api.get(`/warehouse/items/${id}/available-units`),
+  createItem: (data: any) => api.post("/warehouse/items", data),
+  updateItem: (id: string, data: any) => api.patch(`/warehouse/items/${id}`, data),
+  deleteItem: (id: string) => api.delete(`/warehouse/items/${id}`),
+  setCompatibility: (id: string, compatibleItemIds: string[]) =>
+    api.put(`/warehouse/items/${id}/compatibility`, { compatibleItemIds }),
+  // операции
+  receipt: (data: any) => api.post("/warehouse/stock/receipt", data),
+  issue: (data: any) => api.post("/warehouse/stock/issue", data),
+  returnItems: (data: any) => api.post("/warehouse/stock/return", data),
+  writeOff: (data: any) => api.post("/warehouse/stock/write-off", data),
+  reverse: (id: string, reason?: string) => api.post(`/warehouse/movements/${id}/reverse`, { reason }),
+  journal: (params?: any) => api.get("/warehouse/movements", { params }),
+  // справочники
+  categories: () => api.get("/warehouse/categories"),
+  createCategory: (data: any) => api.post("/warehouse/categories", data),
+  warehouses: () => api.get("/warehouse/warehouses"),
+  createWarehouse: (data: any) => api.post("/warehouse/warehouses", data),
+  // сотрудники
+  listEmployees: (search?: string) => api.get("/warehouse/employees", { params: { search } }),
+  getEmployee: (id: string) => api.get(`/warehouse/employees/${id}`),
+  employeeHoldings: (id: string, params?: any) => api.get(`/warehouse/employees/${id}/holdings`, { params }),
+  createEmployee: (data: any) => api.post("/warehouse/employees", data),
+  // инвентаризация
+  listChecks: () => api.get("/warehouse/checks"),
+  getCheck: (id: string) => api.get(`/warehouse/checks/${id}`),
+  createCheck: (warehouseId: string) => api.post("/warehouse/checks", { warehouseId }),
+  submitCheck: (id: string, items: any[]) => api.post(`/warehouse/checks/${id}/submit`, { items }),
+  completeCheck: (id: string) => api.post(`/warehouse/checks/${id}/complete`),
+  // отчёты
+  reportToPurchase: () => api.get("/warehouse/reports/to-purchase"),
+  reportConsumption: (dateFrom?: string, dateTo?: string) =>
+    api.get("/warehouse/reports/consumption", { params: { dateFrom, dateTo } }),
+  reportHoldings: () => api.get("/warehouse/reports/holdings"),
+  exportJournal: (params?: any) =>
+    api.get("/warehouse/reports/export/journal", { params, responseType: "blob" }),
+  exportInventory: (checkId: string) =>
+    api.get(`/warehouse/reports/export/inventory/${checkId}`, { responseType: "blob" }),
+};
+
 // Helper: trigger Excel download
 export const downloadBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);

@@ -5,7 +5,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard, Package, ClipboardCheck, BarChart2,
-  RefreshCw, Settings, LogOut, X, ChevronRight,
+  RefreshCw, Settings, LogOut, X, ChevronRight, Warehouse, HandCoins, ScrollText,
 } from "lucide-react";
 import { USER_ROLE_LABELS } from "@/types";
 import { useSidebar } from "./SidebarContext";
@@ -18,6 +18,16 @@ const navGroups = [
       { href: "/assets", icon: Package, label: "Основные средства", roles: [] as string[] },
       { href: "/inventory", icon: ClipboardCheck, label: "Инвентаризация", roles: [] as string[] },
       { href: "/reports", icon: BarChart2, label: "Отчёты", roles: [] as string[] },
+    ],
+  },
+  {
+    label: "Склад",
+    items: [
+      { href: "/warehouse", icon: Warehouse, label: "Остатки", roles: [] as string[] },
+      { href: "/warehouse/issue", icon: HandCoins, label: "Выдача", roles: ["admin", "accountant", "inventorizer"] },
+      { href: "/warehouse/movements", icon: ScrollText, label: "Журнал операций", roles: [] as string[] },
+      { href: "/warehouse/reports", icon: BarChart2, label: "Отчёты склада", roles: [] as string[] },
+      { href: "/warehouse/checks", icon: ClipboardCheck, label: "Инвентаризация склада", roles: ["admin", "accountant", "inventorizer"] },
     ],
   },
   {

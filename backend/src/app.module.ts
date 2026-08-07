@@ -15,6 +15,7 @@ import { BackupModule } from './modules/backup/backup.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { WarehouseModule } from './modules/warehouse/warehouse.module';
 
 @Module({
   imports: [
@@ -31,9 +32,15 @@ import { DepartmentsModule } from './modules/departments/departments.module';
         password: config.get('DB_PASSWORD', 'changeme'),
         database: config.get('DB_NAME', 'it_inventory'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        // Миграции НЕ запускаются под ролью приложения (itinv_app без прав DDL).
+        // Прогон вручную привилегированной ролью: `npm run migration:run`
+        // (см. package.json / README). Приложение только читает/пишет данные.
+        migrationsRun: false,
         // В продакшене схему не трогаем. При synchronize TypeORM приводит базу
         // к описанию сущностей на каждом старте: переименование поля означает
         // удаление старой колонки вместе с данными, и миграций для отката нет.
+        // Сущности склада помечены `synchronize:false` — их ведёт только миграция.
         synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',
       }),
@@ -48,6 +55,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
     AuditModule,
     NotificationsModule,
     DepartmentsModule,
+    WarehouseModule,
   ],
   providers: [
     // Глобальный аудит действий (POST/PUT/PATCH/DELETE) аутентифицированных пользователей
