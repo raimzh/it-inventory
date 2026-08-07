@@ -1,11 +1,15 @@
 [build]
-builder = "nixpacks"
-# BUILD_STANDALONE=true обязателен: startCommand ниже запускает .next/standalone/server.js,
-# а standalone-режим в next.config.mjs включается только этим флагом (локально он выключен,
-# потому что несовместим с `next start`, которым проект запускается под PM2).
-buildCommand = "npm install && BUILD_STANDALONE=true npm run build"
+# RAILPACK — текущий сборщик Railway (пришёл на смену Nixpacks); зависимости
+# он ставит сам, поэтому npm install в команде не нужен.
+builder = "RAILPACK"
+buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node server.js"
-restartPolicyType = "on_failure"
+# Обычный `next start`, а НЕ standalone. Standalone-сборка кладёт server.js
+# внутрь .next/standalone, и запустить его из корня сервиса нельзя: в Docker
+# это работает только потому, что Dockerfile отдельным шагом копирует
+# содержимое этой папки в рабочий каталог, а на Railway такого шага нет.
+startCommand = "npm start"
+# Railway ожидает значение перечисления в верхнем регистре
+restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
