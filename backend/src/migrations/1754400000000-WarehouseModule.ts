@@ -6,6 +6,15 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * Все объекты создаются только этой миграцией. Сущности склада помечены
  * `@Entity({ synchronize: false })`, поэтому dev-synchronize их не трогает.
+ *
+ * ВАЖНО: миграция НЕ самодостаточна — она ссылается на таблицы `departments`
+ * и `users`, которые в этом проекте создаёт не миграция, а `synchronize`
+ * (локально и в CI) либо `scripts/init.sql` (в Docker). На полностью пустой
+ * базе её нельзя применить первой: TypeORM выполняет миграции ДО synchronize,
+ * и она упадёт с «relation "departments" does not exist».
+ * Порядок для чистой базы: поднять приложение с RUN_MIGRATIONS=false (создастся
+ * базовая схема), затем применить миграции. Приведение базовой схемы к
+ * миграциям — отдельная задача.
  */
 export class WarehouseModule1754400000000 implements MigrationInterface {
   name = 'WarehouseModule1754400000000';

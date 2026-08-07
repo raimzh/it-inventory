@@ -72,7 +72,29 @@ jobs:
         working-directory: backend
         run: npm run build
 
-      - name: Запуск приложения (создаёт схему и применяет миграции)
+      # Схема собирается в два приёма, и порядок здесь принципиален.
+      # TypeORM применяет миграции ДО synchronize, а миграция склада ссылается
+      # на departments и users. На пустой базе одним запуском она падает
+      # («relation "departments" does not exist»), поэтому сначала поднимаем
+      # приложение без миграций — synchronize создаёт базовые таблицы из
+      # сущностей, — и только потом применяем миграции.
+      - name: Базовая схема (synchronize, без миграций)
+        working-directory: backend
+        env:
+          RUN_MIGRATIONS: 'false'
+        run: |
+          node dist/main.js > base.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:3009/health/ready > /dev/null; then
+              kill $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
+              echo "Базовая схема создана"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Приложение не поднялось за 90 секунд:"; cat base.log; exit 1
+
+      - name: Запуск приложения (применяет миграции)
         working-directory: backend
         run: |
           node dist/main.js > backend.log 2>&1 &
@@ -84,6 +106,10 @@ jobs:
             sleep 2
           done
           echo "Бэкенд не поднялся за 90 секунд:"; cat backend.log; exit 1
+
+      - name: Миграции применились
+        working-directory: backend
+        run: npm run migration:show
 
       - name: Тесты складских движений
         working-directory: backend

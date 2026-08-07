@@ -6,6 +6,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { CacheModule } from './common/cache/cache.module';
+import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AssetsModule } from './modules/assets/assets.module';
@@ -22,7 +24,20 @@ import { HealthModule } from './modules/health/health.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+    CacheModule,
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ ttl: 60000, limit: 10 }],
+        // Счётчики в общем хранилище: иначе при нескольких инстансах лимит
+        // умножается на их число (см. RedisThrottlerStorage)
+        storage: new RedisThrottlerStorage(
+          config.get<string>('REDIS_HOST'),
+          Number(config.get('REDIS_PORT', 6379)),
+          config.get<string>('REDIS_PASSWORD'),
+        ),
+      }),
+    }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],

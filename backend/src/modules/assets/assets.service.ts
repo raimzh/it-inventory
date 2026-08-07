@@ -8,6 +8,7 @@ import { AssetFile } from './entities/asset-file.entity';
 import { Department } from '../departments/entities/department.entity';
 import { CreateAssetDto, UpdateAssetDto } from './dto/create-asset.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
+import { CacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class AssetsService {
@@ -17,16 +18,19 @@ export class AssetsService {
     @InjectRepository(AssetFile) private fileRepo: Repository<AssetFile>,
     @InjectRepository(Department) private departmentRepo: Repository<Department>,
     @InjectDataSource() private dataSource: DataSource,
+    private cache: CacheService,
   ) {}
 
-  // In-memory кэш статистики дашборда. TTL ограничивает устаревание сверху,
-  // а явная инвалидация (invalidateStatsCache) сбрасывает кэш сразу после любой
-  // мутации ОС — поэтому пользователь видит свежие цифры мгновенно.
-  private statsCache: { data: any; expires: number } | null = null;
+  // Кэш статистики дашборда. TTL ограничивает устаревание сверху, а явная
+  // инвалидация сбрасывает его сразу после любой мутации ОС — пользователь
+  // видит свежие цифры мгновенно. Хранилище общее (Redis, если настроен),
+  // иначе при нескольких инстансах сброс на одном не виден остальным.
+  private static readonly STATS_CACHE_KEY = 'assets:stats';
   private static readonly STATS_TTL_MS = 20_000;
 
   invalidateStatsCache() {
-    this.statsCache = null;
+    // Намеренно не ждём: сброс кэша не должен задерживать ответ на операцию
+    void this.cache.invalidate(AssetsService.STATS_CACHE_KEY);
   }
 
   private async syncDepartmentName<T extends { departmentId?: string; departmentName?: string }>(dto: T): Promise<T> {
@@ -192,9 +196,8 @@ export class AssetsService {
   }
 
   async getDashboardStats() {
-    if (this.statsCache && this.statsCache.expires > Date.now()) {
-      return this.statsCache.data;
-    }
+    const cached = await this.cache.get<any>(AssetsService.STATS_CACHE_KEY);
+    if (cached) return cached;
 
     const total = await this.assetRepo.count();
     const byStatus = await this.assetRepo.createQueryBuilder('a')
@@ -207,7 +210,7 @@ export class AssetsService {
       .select('SUM(a.residualValue)', 'total').getRawOne();
 
     const data = { total, byStatus, byDepartment, totalResidualValue: totalValue?.total || 0 };
-    this.statsCache = { data, expires: Date.now() + AssetsService.STATS_TTL_MS };
+    await this.cache.set(AssetsService.STATS_CACHE_KEY, data, AssetsService.STATS_TTL_MS);
     return data;
   }
 
