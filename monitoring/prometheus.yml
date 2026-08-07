@@ -1,0 +1,18 @@
+# Конфигурация Prometheus для профиля monitoring.
+# Запуск:  docker compose --profile monitoring up -d
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: it-inventory-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:3001']
+        labels:
+          service: backend
+
+  # Сам Prometheus — чтобы было видно, что сбор вообще работает
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

@@ -1,0 +1,47 @@
+# Мониторинг: Prometheus собирает метрики бэкенда, Grafana их показывает.
+#
+# Отдельным файлом, а не профилем в основном compose: Compose подставляет
+# переменные во ВСЕ сервисы независимо от профилей, поэтому обязательный
+# GRAFANA_PASSWORD ломал бы обычный `docker compose up` тем, кто мониторинг
+# не поднимает.
+#
+# Запуск:
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#
+# Prometheus — http://localhost:9090, Grafana — http://localhost:3030
+# (источник данных: http://prometheus:9090).
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: it-inventory-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: it-inventory-grafana
+    restart: unless-stopped
+    environment:
+      # Пароль обязателен: с дефолтным admin/admin панель мониторинга
+      # сама становится точкой входа в инфраструктуру
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?требуется GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3030:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - app-network
+
+volumes:
+  prometheus_data:
+  grafana_data:

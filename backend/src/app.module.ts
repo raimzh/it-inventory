@@ -20,6 +20,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { HealthModule } from './modules/health/health.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
+import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 
 @Module({
   imports: [
@@ -78,6 +80,7 @@ import { HealthModule } from './modules/health/health.module';
     DepartmentsModule,
     WarehouseModule,
     HealthModule,
+    MetricsModule,
   ],
   providers: [
     // Глобальный аудит действий (POST/PUT/PATCH/DELETE) аутентифицированных пользователей
@@ -86,6 +89,13 @@ import { HealthModule } from './modules/health/health.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // Метрики после присвоения request-id, но раньше guard-ов: так в статистику
+    // попадают и отказы авторизации. /metrics и /health исключены — их дёргает
+    // мониторинг, и в статистике приложения они только шум.
     consumer.apply(RequestIdMiddleware).forRoutes('*');
+    consumer
+      .apply(MetricsMiddleware)
+      .exclude('metrics', 'metrics/(.*)', 'health', 'health/(.*)')
+      .forRoutes('*');
   }
 }
