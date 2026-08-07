@@ -51,6 +51,9 @@ export class UsersService {
     if (dto.password) {
       (dto as any).passwordHash = await bcrypt.hash(dto.password, 12);
       delete dto.password;
+      // Смена пароля обесценивает ранее выданные refresh-токены —
+      // иначе старая сессия продолжала бы жить после компрометации.
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     }
     Object.assign(user, dto);
     return this.repo.save(user);

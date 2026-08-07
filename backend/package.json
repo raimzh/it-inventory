@@ -7,7 +7,8 @@
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "lint": "eslint src --ext .ts",
-    "test": "jest",
+    "test": "node --test test/stock.movements.test.js",
+    "test:e2e": "node --test test/api.e2e.test.js",
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js"

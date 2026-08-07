@@ -37,6 +37,11 @@ export class User {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // Увеличивается при выходе и смене пароля — обесценивает все ранее выданные
+  // refresh-токены без хранения их списка в БД.
+  @Column({ name: 'token_version', default: 0 })
+  tokenVersion: number;
+
   @Column({ name: 'email_notifications', default: true })
   emailNotifications: boolean;
 

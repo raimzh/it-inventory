@@ -99,6 +99,12 @@ export class Asset {
   @Column({ nullable: true, length: 255 })
   barcode: string;
 
+  // Версия записи для оптимистичной блокировки. Увеличивается при каждом
+  // сохранении; клиент присылает свою версию, и расхождение означает, что
+  // карточку уже изменил кто-то другой (см. AssetsService.update).
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter, notFound } from "next/navigation";
+import Image from "next/image";
 import { assetsApi, departmentsApi } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
 import { AssetStatusBadge } from "@/components/ui/Badge";
@@ -77,6 +78,11 @@ export default function AssetDetailPage() {
       const text = Array.isArray(msg) ? msg.join(", ") : (msg || "Не удалось сохранить изменения");
       setEditError(text);
       toast.error(text);
+      // 409 — карточку изменил другой пользователь. Подтягиваем свежие данные,
+      // чтобы человек увидел актуальное состояние и не сохранял поверх вслепую.
+      if (err.response?.status === 409) {
+        qc.invalidateQueries({ queryKey: ["asset", id] });
+      }
     },
   });
 
@@ -104,6 +110,9 @@ export default function AssetDetailPage() {
       status: asset.status, ownerName: asset.ownerName, responsiblePerson: asset.responsiblePerson,
       location: asset.location, comment: asset.comment, departmentId: asset.departmentId || "",
       category: asset.category || "",
+      // Версия на момент открытия формы — сервер отвергнет сохранение,
+      // если за это время карточку успел изменить кто-то другой
+      version: asset.version,
     });
     setEditModal(true);
   };
@@ -230,8 +239,15 @@ export default function AssetDetailPage() {
             {files?.filter((f: any) => f.type === "photo").length ? (
               <div className="grid grid-cols-2 gap-2 mb-3">
                 {files.filter((f: any) => f.type === "photo").map((f: any) => (
-                  <div key={f.id} className="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-800">
-                    <img src={`${API_URL}/uploads/${f.filename}`} alt={f.originalName} className="w-full h-full object-cover" />
+                  <div key={f.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-800">
+                    {/* next/image отдаёт WebP/AVIF нужного размера и грузит вне экрана лениво */}
+                    <Image
+                      src={`${API_URL}/uploads/${f.filename}`}
+                      alt={f.originalName}
+                      fill
+                      sizes="(max-width: 768px) 50vw, 200px"
+                      className="object-cover"
+                    />
                   </div>
                 ))}
               </div>
@@ -357,7 +373,10 @@ export default function AssetDetailPage() {
           {qrCode ? (
             <>
               <div className="inline-block p-3 rounded-2xl bg-white border border-gray-100 dark:border-slate-700 shadow-sm mb-3">
-                <img src={qrCode} alt="QR code" className="w-44 h-44" />
+                {/* eslint-disable-next-line @next/next/no-img-element --
+                    QR приходит как base64 data-URL: оптимизировать нечего,
+                    next/image потребовал бы unoptimized и ничего не дал бы */}
+                <img src={qrCode} alt="QR-код основного средства" className="w-44 h-44" />
               </div>
               <p className="text-xs text-gray-400 font-mono mb-4">{asset.inventoryNumber}</p>
               <Button variant="secondary" size="sm" onClick={() => {

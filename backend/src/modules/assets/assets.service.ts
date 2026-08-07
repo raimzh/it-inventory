@@ -1,6 +1,6 @@
-﻿import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+﻿import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import * as QRCode from 'qrcode';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
@@ -16,6 +16,7 @@ export class AssetsService {
     @InjectRepository(AssetHistory) private historyRepo: Repository<AssetHistory>,
     @InjectRepository(AssetFile) private fileRepo: Repository<AssetFile>,
     @InjectRepository(Department) private departmentRepo: Repository<Department>,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // In-memory кэш статистики дашборда. TTL ограничивает устаревание сверху,
@@ -107,26 +108,42 @@ export class AssetsService {
 
   async update(id: string, dto: UpdateAssetDto, userId?: string, userName?: string): Promise<Asset> {
     await this.syncDepartmentName(dto);
-    const asset = await this.findOne(id);
-    const changedFields: AssetHistory[] = [];
+    // Версия не является полем данных — вынимаем её до сравнения изменений
+    const { version: clientVersion, ...changes } = dto as UpdateAssetDto & { version?: number };
 
-    for (const [key, value] of Object.entries(dto)) {
-      const current = (asset as Record<string, any>)[key];
-      if (value !== undefined && current !== value) {
-        changedFields.push({
-          assetId: id, field: key,
-          oldValue: String(current ?? ''),
-          newValue: String(value ?? ''),
-          changedBy: userId, changedByName: userName, source: 'manual',
-        } as AssetHistory);
+    // Всё в одной транзакции: запись ОС и запись истории должны попасть
+    // в базу вместе, иначе история разъезжается с фактическим состоянием.
+    return this.dataSource.transaction(async (m) => {
+      // Блокируем строку на время проверки версии, чтобы два параллельных
+      // сохранения не прошли проверку одновременно.
+      const asset = await m.findOne(Asset, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!asset) throw new NotFoundException('ОС не найдено');
+
+      if (clientVersion !== undefined && Number(clientVersion) !== asset.version) {
+        throw new ConflictException(
+          'Карточку уже изменил другой пользователь. Обновите страницу, чтобы увидеть актуальные данные, и повторите правку.',
+        );
       }
-    }
 
-    await this.assetRepo.update(id, dto as any);
-    if (changedFields.length) await this.historyRepo.save(changedFields);
+      const changedFields: AssetHistory[] = [];
+      for (const [key, value] of Object.entries(changes)) {
+        const current = (asset as Record<string, any>)[key];
+        if (value !== undefined && current !== value) {
+          changedFields.push({
+            assetId: id, field: key,
+            oldValue: String(current ?? ''),
+            newValue: String(value ?? ''),
+            changedBy: userId, changedByName: userName, source: 'manual',
+          } as AssetHistory);
+        }
+      }
 
-    this.invalidateStatsCache();
-    return this.findOne(id);
+      await m.update(Asset, id, { ...(changes as any), version: asset.version + 1 });
+      if (changedFields.length) await m.save(AssetHistory, changedFields);
+
+      this.invalidateStatsCache();
+      return m.findOneOrFail(Asset, { where: { id }, relations: ['department', 'owner'] });
+    });
   }
 
   async remove(id: string): Promise<void> {

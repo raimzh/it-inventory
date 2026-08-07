@@ -21,7 +21,9 @@ import { User } from '../users/entities/user.entity';
       useFactory: (config: ConfigService) => ({
         // Без значения по умолчанию — см. config/env.validation.ts
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '8h') },
+        // Короткий срок жизни: украденный access-токен быстро протухает.
+        // Непрерывность работы обеспечивает refresh-токен (см. auth.service).
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '30m') },
       }),
     }),
   ],

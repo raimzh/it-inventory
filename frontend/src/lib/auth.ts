@@ -17,8 +17,18 @@ export function setToken(token: string) {
   Cookies.set("access_token", token, { expires: 1, sameSite: "strict" });
 }
 
+export function getRefreshToken(): string | undefined {
+  return Cookies.get("refresh_token");
+}
+
+export function setRefreshToken(token: string) {
+  // 7 дней — совпадает с REFRESH_EXPIRES_IN на бэкенде
+  Cookies.set("refresh_token", token, { expires: 7, sameSite: "strict" });
+}
+
 export function removeToken() {
   Cookies.remove("access_token");
+  Cookies.remove("refresh_token");
   Cookies.remove("user_data");
 }
 

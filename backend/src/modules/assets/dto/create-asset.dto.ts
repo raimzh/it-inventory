@@ -25,6 +25,10 @@ export class CreateAssetDto {
 }
 
 export class UpdateAssetDto {
+  // Версия карточки, полученная клиентом при чтении. Если она отстала —
+  // сервер отвечает 409, не затирая чужую правку. Необязательна ради
+  // совместимости с массовыми операциями и интеграциями.
+  @IsOptional() @IsNumber() version?: number;
   @IsOptional() @IsString() location?: string;
   @IsOptional() @IsUUID() ownerId?: string;
   @IsOptional() @IsString() ownerName?: string;

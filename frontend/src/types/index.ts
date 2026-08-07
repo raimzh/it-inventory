@@ -70,6 +70,8 @@ export interface Asset {
   comment?: string;
   qrCode?: string;
   lastSyncedAt?: string;
+  /** Версия записи для оптимистичной блокировки — отправляется обратно при сохранении */
+  version?: number;
   createdAt: string;
   updatedAt: string;
   department?: { id: string; name: string };
