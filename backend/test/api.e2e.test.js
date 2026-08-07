@@ -114,6 +114,51 @@ test('viewer видит остатки склада, но не проводит 
   assert.equal(op.status, 403);
 });
 
+test('операционные данные закрыты от роли «Просмотр»', async () => {
+  for (const ep of ['/assets/excel/logs', '/inventory/sessions', '/sync/logs']) {
+    const r = await req(ep, { token: ctx.viewer.token });
+    assert.equal(r.status, 403, `${ep} должен быть закрыт для viewer`);
+  }
+});
+
+test('роль «Просмотр» сохраняет доступ к инвентарю и дашборду', async () => {
+  for (const ep of ['/assets', '/assets/stats', '/sync/last', '/warehouse/items']) {
+    const r = await req(ep, { token: ctx.viewer.token });
+    assert.equal(r.status, 200, `${ep} должен быть доступен viewer — в этом смысл роли`);
+  }
+});
+
+test('вложение не скачать без авторизации, а недопустимый тип не загрузить', async () => {
+  const inv = 'E2E-FILE-' + Math.floor(Math.random() * 1e6);
+  const asset = await req('/assets', { method: 'POST', token: ctx.adminToken, body: { inventoryNumber: inv, name: 'Вложения' } });
+  ctx.createdAssetIds.push(asset.body.id);
+
+  // Загружаем допустимое изображение (1x1 PNG)
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const okForm = new FormData();
+  okForm.append('file', new Blob([png], { type: 'image/png' }), 'photo.png');
+  const uploaded = await fetch(`${BASE}/assets/${asset.body.id}/files?type=photo`, {
+    method: 'POST', headers: { authorization: `Bearer ${ctx.adminToken}` }, body: okForm,
+  });
+  assert.equal(uploaded.status, 201);
+  const file = await uploaded.json();
+
+  const url = `${BASE}/assets/${asset.body.id}/files/${file.id}/download`;
+  assert.equal((await fetch(url)).status, 401, 'без токена файл отдаваться не должен');
+  assert.equal((await fetch(url, { headers: { authorization: `Bearer ${ctx.adminToken}` } })).status, 200);
+  // Тег <img> не может отправить заголовок — токен должен приниматься и из куки
+  assert.equal((await fetch(url, { headers: { cookie: `access_token=${ctx.adminToken}` } })).status, 200,
+    'токен из куки нужен, чтобы картинка грузилась в <img>');
+
+  // Недопустимый тип
+  const badForm = new FormData();
+  badForm.append('file', new Blob([Buffer.from('<script>alert(1)</script>')], { type: 'text/html' }), 'evil.html');
+  const rejected = await fetch(`${BASE}/assets/${asset.body.id}/files?type=doc`, {
+    method: 'POST', headers: { authorization: `Bearer ${ctx.adminToken}` }, body: badForm,
+  });
+  assert.equal(rejected.status, 400, 'HTML-файл должен отклоняться с понятной ошибкой, а не 500');
+});
+
 test('health доступен без токена', async () => {
   assert.equal((await req('/health')).status, 200);
   const ready = await req('/health/ready');

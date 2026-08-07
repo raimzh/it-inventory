@@ -240,11 +240,14 @@ export default function AssetDetailPage() {
               <div className="grid grid-cols-2 gap-2 mb-3">
                 {files.filter((f: any) => f.type === "photo").map((f: any) => (
                   <div key={f.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-800">
-                    {/* next/image отдаёт WebP/AVIF нужного размера и грузит вне экрана лениво */}
+                    {/* Файл отдаёт приложение с проверкой прав, а не открытый /uploads.
+                        unoptimized: оптимизатор Next обращается к источнику сам,
+                        без куки пользователя, и авторизацию бы не прошёл. */}
                     <Image
-                      src={`${API_URL}/uploads/${f.filename}`}
+                      src={`/api/assets/${id}/files/${f.id}/download`}
                       alt={f.originalName}
                       fill
+                      unoptimized
                       sizes="(max-width: 768px) 50vw, 200px"
                       className="object-cover"
                     />

@@ -2,6 +2,8 @@
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 import * as QRCode from 'qrcode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
 import { AssetFile } from './entities/asset-file.entity';
@@ -187,6 +189,26 @@ export class AssetsService {
 
   async removeFile(fileId: string): Promise<void> {
     await this.fileRepo.delete(fileId);
+  }
+
+  /**
+   * Путь к вложению на диске по идентификатору записи.
+   *
+   * Имя файла берётся ИЗ БАЗЫ, а не из URL, поэтому подставить сюда «../»
+   * нельзя в принципе. Дополнительно проверяем, что итоговый путь не покидает
+   * каталог загрузок — на случай испорченных данных.
+   */
+  async getFilePath(fileId: string): Promise<{ file: AssetFile; path: string }> {
+    const file = await this.fileRepo.findOne({ where: { id: fileId } });
+    if (!file) throw new NotFoundException('Файл не найден');
+
+    const uploadDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
+    const resolved = path.resolve(uploadDir, path.basename(file.filename));
+    if (path.relative(uploadDir, resolved).startsWith('..')) {
+      throw new BadRequestException('Недопустимый путь к файлу');
+    }
+    if (!fs.existsSync(resolved)) throw new NotFoundException('Файл отсутствует на диске');
+    return { file, path: resolved };
   }
 
   async generateQrCode(id: string): Promise<string> {

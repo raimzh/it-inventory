@@ -5,6 +5,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
 import { extname } from 'path';
+import { createReadStream } from 'fs';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
@@ -22,10 +23,32 @@ const EXCEL_MIME = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
 ];
+// BadRequestException, а не обычный Error: иначе отказ доходит до клиента
+// как «внутренняя ошибка сервера» вместо внятного объяснения.
 const excelFileFilter = (_req: any, file: Express.Multer.File, cb: Function) => {
   const ok = EXCEL_MIME.includes(file.mimetype) ||
     ['.xlsx', '.xls'].includes(extname(file.originalname).toLowerCase());
-  ok ? cb(null, true) : cb(new Error('Разрешены только файлы .xlsx и .xls'), false);
+  ok ? cb(null, true) : cb(new BadRequestException('Разрешены только файлы .xlsx и .xls'), false);
+};
+
+// Вложения к карточке ОС: фотографии и документы. Список закрытый —
+// без него на диск попадал любой файл, включая .html и .svg, которые
+// браузер способен исполнить, если их отдать с неверным типом.
+const ATTACHMENT_MIME = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ...EXCEL_MIME,
+];
+const ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+const attachmentFileFilter = (_req: any, file: Express.Multer.File, cb: Function) => {
+  const ok = ATTACHMENT_MIME.includes(file.mimetype)
+    && ATTACHMENT_EXT.includes(extname(file.originalname).toLowerCase());
+  ok ? cb(null, true) : cb(
+    new BadRequestException('Допустимы только изображения и документы (jpg, png, webp, gif, pdf, doc, xls)'),
+    false,
+  );
 };
 
 @ApiTags('assets')
@@ -94,7 +117,11 @@ export class AssetsController {
     );
   }
 
+  // Журнал импортов показывает, кто и что загружал, вместе с текстами ошибок —
+  // операционные данные, доступные тем, кто ведёт учёт.
   @Get('excel/logs')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'accountant')
   @ApiOperation({ summary: 'Журнал импортов из Excel' })
   getImportLogs(@Query('limit') limit = 20) {
     return this.excelImport.getLogs(Number(limit));
@@ -162,6 +189,7 @@ export class AssetsController {
       filename: (req, file, cb) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
     }),
     limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: attachmentFileFilter,
   }))
   @ApiConsumes('multipart/form-data')
   uploadFile(
@@ -171,6 +199,29 @@ export class AssetsController {
     @Query('type') type = 'photo',
   ) {
     return this.assetsService.addFile(id, file, type, user?.id);
+  }
+
+  /**
+   * Отдаёт вложение авторизованному пользователю.
+   *
+   * Раньше файлы лежали в открытом доступе: nginx отдавал /uploads/ кому
+   * угодно, а защитой служило лишь то, что имя файла — UUID. Имена утекают
+   * через историю браузера, Referer и логи прокси, поэтому доступ теперь
+   * проходит через приложение. Токен берётся из заголовка ИЛИ из куки —
+   * иначе тег <img> не смог бы загрузить картинку.
+   */
+  @Get(':id/files/:fileId/download')
+  @ApiOperation({ summary: 'Скачать вложение' })
+  async downloadFile(@Param('fileId') fileId: string, @Res() res: Response) {
+    const { file, path } = await this.assetsService.getFilePath(fileId);
+    res.set({
+      'Content-Type': file.mimeType || 'application/octet-stream',
+      // inline — чтобы фотографии показывались в карточке; тип при этом
+      // ограничен списком разрешённых при загрузке
+      'Content-Disposition': `inline; filename="${encodeURIComponent(file.originalName)}"`,
+      'Cache-Control': 'private, max-age=300',
+    });
+    createReadStream(path).pipe(res);
   }
 
   @Delete(':id/files/:fileId')

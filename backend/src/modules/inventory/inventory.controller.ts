@@ -8,9 +8,15 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AssetStatus } from '../assets/entities/asset.entity';
 import { SessionStatus } from './entities/inventory-session.entity';
 
+// Инвентаризация — рабочий процесс, а не справочные данные: её ход, состав
+// и расхождения видны только тем, кто её проводит. Роль «Просмотр»
+// предназначена для просмотра инвентаря, а не операционной кухни.
+const INVENTORY_ROLES = ['admin', 'accountant', 'inventorizer'];
+
 @ApiTags('inventory')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(...INVENTORY_ROLES)
 @Controller('inventory')
 export class InventoryController {
   constructor(private inventoryService: InventoryService) {}

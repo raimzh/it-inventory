@@ -27,10 +27,15 @@ export class SyncController {
     return this.syncService.importFromFile(body.data, user?.id, user?.fullName);
   }
 
+  // Журнал содержит тексты ошибок интеграции и подробности обмена с 1С —
+  // это операционные данные, не для всех.
   @Get('logs')
+  @Roles('admin', 'accountant')
   @ApiOperation({ summary: 'Журнал синхронизаций' })
   getLogs(@Query('limit') limit = 20) { return this.syncService.getLogs(+limit); }
 
+  // Ролей намеренно нет: отдаёт только время и статус последнего обмена,
+  // и это показывает дашборд всем пользователям.
   @Get('last')
   @ApiOperation({ summary: 'Последняя успешная синхронизация' })
   getLastSync() { return this.syncService.getLastSync(); }
