@@ -8,8 +8,12 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { User, UserRole } from './modules/users/entities/user.entity';
 import { Department } from './modules/departments/entities/department.entity';
+import { validateEnv } from './config/env.validation';
 
 async function bootstrap() {
+  // Падаем на старте, если секреты не заданы или заведомо слабые
+  validateEnv();
+
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -44,27 +48,32 @@ async function bootstrap() {
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
 
-  // Seed / reset default admin user
+  // Сид администратора. Учётные данные берутся ТОЛЬКО из окружения:
+  // захардкоженный пароль в коде публичного репозитория = открытый доступ к системе.
+  // Если ADMIN_PASSWORD не задан — сид пропускается (существующие учётки не трогаем).
   try {
-    const userRepo = app.get(getRepositoryToken(User));
-    const adminUsername = process.env.ADMIN_USERNAME || 'r.zhuman';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Ktms2026!';
-    const passwordHash = await bcrypt.hash(adminPassword, 12);
-    const existing = await userRepo.findOne({ where: { username: adminUsername } });
-    if (existing) {
-      // Force-update password to ensure it's hashed with current bcrypt
-      await userRepo.update(existing.id, { passwordHash, isActive: true, role: UserRole.ADMIN });
-      console.log(`Admin user '${adminUsername}' password updated`);
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminUsername || !adminPassword) {
+      console.warn('ADMIN_USERNAME/ADMIN_PASSWORD не заданы — сид администратора пропущен');
     } else {
-      await userRepo.save(userRepo.create({
-        username: adminUsername,
-        email: process.env.ADMIN_EMAIL || 'admin@ktms.kz',
-        passwordHash,
-        fullName: 'Администратор',
-        role: UserRole.ADMIN,
-        isActive: true,
-      }));
-      console.log(`Admin user '${adminUsername}' created`);
+      const userRepo = app.get(getRepositoryToken(User));
+      const passwordHash = await bcrypt.hash(adminPassword, 12);
+      const existing = await userRepo.findOne({ where: { username: adminUsername } });
+      if (existing) {
+        await userRepo.update(existing.id, { passwordHash, isActive: true, role: UserRole.ADMIN });
+        console.log(`Admin user '${adminUsername}' password updated`);
+      } else {
+        await userRepo.save(userRepo.create({
+          username: adminUsername,
+          email: process.env.ADMIN_EMAIL || 'admin@ktms.kz',
+          passwordHash,
+          fullName: 'Администратор',
+          role: UserRole.ADMIN,
+          isActive: true,
+        }));
+        console.log(`Admin user '${adminUsername}' created`);
+      }
     }
   } catch (e) {
     console.error('Seed error:', e.message);

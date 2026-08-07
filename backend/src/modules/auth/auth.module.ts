@@ -19,7 +19,8 @@ import { User } from '../users/entities/user.entity';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET', 'supersecretjwtkey'),
+        // Без значения по умолчанию — см. config/env.validation.ts
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '8h') },
       }),
     }),
