@@ -48,7 +48,7 @@ export class ItemsService {
 
   /** Карточка позиции: остатки по складам, история движений, совместимость, экземпляры. */
   async card(id: string) {
-    const item = await this.itemRepo.findOne({ where: { id }, relations: ['category'] });
+    const item = await this.itemRepo.findOne({ where: { id }, relations: { category: true } });
     if (!item) throw new NotFoundException('Позиция не найдена');
 
     const balances = await this.dataSource.query(
@@ -58,7 +58,7 @@ export class ItemsService {
 
     const movements = await this.mvRepo.find({
       where: { itemId: id },
-      relations: ['warehouse', 'employee', 'stockUnit'],
+      relations: { warehouse: true, employee: true, stockUnit: true },
       order: { createdAt: 'DESC' },
       take: 100,
     });
@@ -72,7 +72,7 @@ export class ItemsService {
     const units = item.isSerialized
       ? await this.unitRepo.find({
           where: { itemId: id },
-          relations: ['warehouse', 'currentHolder'],
+          relations: { warehouse: true, currentHolder: true },
           order: { createdAt: 'DESC' },
         })
       : [];
@@ -109,7 +109,7 @@ export class ItemsService {
 
     const item = await this.itemRepo.findOne({
       where: [{ barcode: value }, { sku }],
-      relations: ['category'],
+      relations: { category: true },
     });
     if (!item) throw new NotFoundException(`Позиция по коду «${value}» не найдена`);
     return item;
@@ -119,7 +119,7 @@ export class ItemsService {
   async availableUnits(itemId: string) {
     return this.unitRepo.find({
       where: { itemId, status: 'in_stock' },
-      relations: ['warehouse'],
+      relations: { warehouse: true },
       order: { serialNumber: 'ASC' },
     });
   }

@@ -20,7 +20,7 @@ export class EmployeesService {
   }
 
   async findOne(id: string) {
-    const e = await this.repo.findOne({ where: { id }, relations: ['department'] });
+    const e = await this.repo.findOne({ where: { id }, relations: { department: true } });
     if (!e) throw new NotFoundException('Сотрудник не найден');
     return e;
   }

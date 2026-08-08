@@ -19,11 +19,11 @@ export class InventoryCheckService {
   ) {}
 
   list() {
-    return this.checkRepo.find({ relations: ['warehouse'], order: { startedAt: 'DESC' } });
+    return this.checkRepo.find({ relations: { warehouse: true }, order: { startedAt: 'DESC' } });
   }
 
   async findOne(id: string) {
-    const check = await this.checkRepo.findOne({ where: { id }, relations: ['warehouse'] });
+    const check = await this.checkRepo.findOne({ where: { id }, relations: { warehouse: true } });
     if (!check) throw new NotFoundException('Инвентаризация не найдена');
     const items = await this.dataSource.query(
       `SELECT ci.id, ci.item_id AS "itemId", i.sku, i.name, i.unit, i.is_serialized AS "isSerialized",

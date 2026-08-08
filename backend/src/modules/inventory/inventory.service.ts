@@ -32,11 +32,11 @@ export class InventoryService {
       const items = assets.map(a => this.itemRepo.create({ sessionId: session.id, assetId: a.id, status: a.status }));
       await this.itemRepo.save(items, { chunk: 100 });
     }
-    return this.sessionRepo.findOne({ where: { id: session.id }, relations: ['department'] });
+    return this.sessionRepo.findOne({ where: { id: session.id }, relations: { department: true } });
   }
 
   async getSession(id: string) {
-    const session = await this.sessionRepo.findOne({ where: { id }, relations: ['department'] });
+    const session = await this.sessionRepo.findOne({ where: { id }, relations: { department: true } });
     if (!session) throw new NotFoundException('Сессия не найдена');
     return session;
   }
@@ -65,7 +65,7 @@ export class InventoryService {
       .where('id = :sid', { sid: sessionId })
       .execute();
 
-    return this.itemRepo.findOne({ where: { id: item.id }, relations: ['asset'] });
+    return this.itemRepo.findOne({ where: { id: item.id }, relations: { asset: true } });
   }
 
   async checkByInventoryNumber(sessionId: string, inventoryNumber: string, dto: any, userId: string, userName: string) {

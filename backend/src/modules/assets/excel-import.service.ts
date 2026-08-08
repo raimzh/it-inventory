@@ -252,7 +252,7 @@ export class ExcelImportService {
     const { headers, rows } = await this.parseSheet(buffer);
 
     // Fetch all existing inventory numbers in one query
-    const existingAssets = await this.assetRepo.find({ select: ['inventoryNumber', 'id'] });
+    const existingAssets = await this.assetRepo.find({ select: { inventoryNumber: true, id: true } });
     const existingMap = new Map(existingAssets.map(a => [a.inventoryNumber, a]));
 
     const seen = new Set<string>(); // track duplicates within the file
