@@ -22,7 +22,7 @@ async function bootstrap() {
     .split(',').map(o => o.trim());
 
   app.enableCors({
-    origin: (origin, cb) => {
+    origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
       // Allow requests with no origin (mobile apps, curl, same-origin via nginx)
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
       cb(null, false);
