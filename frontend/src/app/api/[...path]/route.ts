@@ -31,8 +31,8 @@ const REFRESH_MAX_AGE = 60 * 60 * 24 * 7; // совпадает с REFRESH_EXPIR
  * Next подменяет глобальный fetch, и тот бросает UND_ERR_NOT_SUPPORTED при
  * пересылке тела запроса.
  */
-async function proxy(req: NextRequest, { params }: { params: { path: string[] } }) {
-  const path = params.path.join("/");
+async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const path = (await params).path.join("/");
   const search = req.nextUrl.search || "";
   const target = new URL(`${BACKEND()}/${path}${search}`);
 
