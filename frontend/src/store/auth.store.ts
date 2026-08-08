@@ -1,11 +1,21 @@
-﻿import { create } from "zustand";
+import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AuthUser, setToken, setRefreshToken, removeToken, setStoredUser } from "@/lib/auth";
+import { AuthUser, setStoredUser, clearStoredUser } from "@/lib/auth";
 import { authApi } from "@/lib/api";
 
+/**
+ * Токен здесь намеренно не хранится.
+ *
+ * Access и refresh лежат в httpOnly-куках, которые ставит серверный прокси,
+ * а заголовок Authorization он подставляет сам. Браузерный JavaScript токенов
+ * не видит, поэтому и класть их в состояние незачем — при XSS утекло бы
+ * содержимое localStorage вместе с ними.
+ *
+ * В сохраняемом состоянии остаются только данные пользователя: они нужны для
+ * мгновенной отрисовки интерфейса до ответа /auth/profile.
+ */
 interface AuthState {
   user: AuthUser | null;
-  token: string | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -17,17 +27,16 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
-      token: null,
       isLoading: false,
 
       login: async (username: string, password: string) => {
         set({ isLoading: true });
         try {
+          // Токены в ответе не приходят: прокси забирает их в httpOnly-куки
+          // и вырезает из тела, оставляя только пользователя.
           const { data } = await authApi.login(username, password);
-          setToken(data.accessToken);
-          if (data.refreshToken) setRefreshToken(data.refreshToken);
           setStoredUser(data.user);
-          set({ user: data.user, token: data.accessToken, isLoading: false });
+          set({ user: data.user, isLoading: false });
         } catch (err) {
           set({ isLoading: false });
           throw err;
@@ -35,11 +44,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        // Сообщаем серверу, чтобы он отозвал refresh-токены этой учётной записи.
+        // Сервер отзывает refresh-токены учётной записи, прокси чистит куки.
         // Ошибку глушим намеренно: локальный выход должен произойти в любом случае.
         authApi.logout().catch(() => {});
-        removeToken();
-        set({ user: null, token: null });
+        clearStoredUser();
+        set({ user: null });
       },
 
       setUser: (user: AuthUser) => set({ user }),
@@ -53,6 +62,6 @@ export const useAuthStore = create<AuthState>()(
         }
       },
     }),
-    { name: "auth-storage", partialize: (s) => ({ user: s.user, token: s.token }) }
+    { name: "auth-storage", partialize: (s) => ({ user: s.user }) }
   )
 );

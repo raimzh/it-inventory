@@ -1,4 +1,4 @@
-﻿import Cookies from "js-cookie";
+import Cookies from "js-cookie";
 
 export interface AuthUser {
   id: string;
@@ -9,29 +9,19 @@ export interface AuthUser {
   department?: string;
 }
 
-export function getToken(): string | undefined {
-  return Cookies.get("access_token");
-}
+/**
+ * Токены здесь намеренно отсутствуют.
+ *
+ * Access и refresh хранятся в httpOnly-куках, которые ставит серверный
+ * прокси (src/app/api/[...path]/route.ts). Браузерный JavaScript их не
+ * видит, поэтому украсть токен через XSS нельзя, а заголовок Authorization
+ * подставляется на сервере.
+ *
+ * Как следствие, «есть ли сессия» больше нельзя узнать чтением куки —
+ * это выясняется запросом профиля (см. dashboard/layout.tsx).
+ */
 
-export function setToken(token: string) {
-  Cookies.set("access_token", token, { expires: 1, sameSite: "strict" });
-}
-
-export function getRefreshToken(): string | undefined {
-  return Cookies.get("refresh_token");
-}
-
-export function setRefreshToken(token: string) {
-  // 7 дней — совпадает с REFRESH_EXPIRES_IN на бэкенде
-  Cookies.set("refresh_token", token, { expires: 7, sameSite: "strict" });
-}
-
-export function removeToken() {
-  Cookies.remove("access_token");
-  Cookies.remove("refresh_token");
-  Cookies.remove("user_data");
-}
-
+/** Данные пользователя — не учётные данные, поэтому обычная кука допустима. */
 export function getStoredUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   try {
@@ -43,11 +33,11 @@ export function getStoredUser(): AuthUser | null {
 }
 
 export function setStoredUser(user: AuthUser) {
-  Cookies.set("user_data", JSON.stringify(user), { expires: 1 });
+  Cookies.set("user_data", JSON.stringify(user), { expires: 1, sameSite: "strict" });
 }
 
-export function isAuthenticated(): boolean {
-  return !!getToken();
+export function clearStoredUser() {
+  Cookies.remove("user_data");
 }
 
 export function hasRole(user: AuthUser | null, ...roles: string[]): boolean {

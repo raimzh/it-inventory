@@ -1,34 +1,26 @@
 ﻿import axios from "axios";
-import Cookies from "js-cookie";
 
-// In Docker: requests go through nginx /api/ → backend (no CORS issues)
-// In dev: next.config.mjs rewrites /api/* → localhost:3001/*
+// Все запросы идут через серверный прокси /api: он подставляет заголовок
+// Authorization из httpOnly-куки. Здесь токены не читаются и не хранятся —
+// браузерный JavaScript о них не знает.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
-});
-
-api.interceptors.request.use((config) => {
-  const token = Cookies.get("access_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
+  // Куки httpOnly отправляются браузером сами, но только если это разрешено явно
+  withCredentials: true,
 });
 
 // Access-токен живёт 30 минут. Чтобы пользователя не выбрасывало на форму входа
-// посреди работы, первый же 401 пробуем починить обменом refresh-токена и
-// повторяем исходный запрос. Параллельные 401 ждут одного общего обновления,
-// иначе каждый запрос затеет свой обмен и ротация токенов перебьёт сама себя.
-let refreshPromise: Promise<string> | null = null;
+// посреди работы, первый же 401 пробуем починить обновлением и повторяем
+// исходный запрос. Параллельные 401 ждут одного общего обновления, иначе каждый
+// запрос затеет свой обмен и ротация токенов перебьёт сама себя.
+let refreshPromise: Promise<void> | null = null;
 
-async function refreshAccessToken(): Promise<string> {
-  const refreshToken = Cookies.get("refresh_token");
-  if (!refreshToken) throw new Error("no refresh token");
-  const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-  Cookies.set("access_token", data.accessToken, { expires: 1, sameSite: "strict" });
-  Cookies.set("refresh_token", data.refreshToken, { expires: 7, sameSite: "strict" });
-  return data.accessToken;
+async function refreshSession(): Promise<void> {
+  // Тело пустое: refresh-токен прокси возьмёт из httpOnly-куки сам
+  await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
 }
 
 api.interceptors.response.use(
@@ -41,14 +33,13 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && !isAuthCall && !original._retried) {
       original._retried = true;
       try {
-        refreshPromise = refreshPromise || refreshAccessToken().finally(() => { refreshPromise = null; });
-        const token = await refreshPromise;
-        original.headers = { ...original.headers, Authorization: `Bearer ${token}` };
+        refreshPromise = refreshPromise || refreshSession().finally(() => { refreshPromise = null; });
+        await refreshPromise;
+        // Новый токен уже в куке — прокси подставит его при повторе
         return api(original);
       } catch {
-        // Обновиться не вышло — сессия действительно закончилась
-        Cookies.remove("access_token");
-        Cookies.remove("refresh_token");
+        // Обновиться не вышло — сессия действительно закончилась.
+        // Куки чистит прокси, здесь только уводим на форму входа.
         if (typeof window !== "undefined") window.location.href = "/login";
       }
     }
@@ -61,7 +52,8 @@ export const authApi = {
   login: (username: string, password: string) =>
     api.post("/auth/login", { username, password }),
   getProfile: () => api.get("/auth/profile"),
-  refresh: (refreshToken: string) => api.post("/auth/refresh", { refreshToken }),
+  /** Тело пустое: refresh-токен прокси берёт из httpOnly-куки */
+  refresh: () => api.post("/auth/refresh", {}),
   logout: () => api.post("/auth/logout"),
 };
 

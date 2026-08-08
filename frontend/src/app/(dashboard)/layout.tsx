@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Cookies from "js-cookie";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SidebarProvider } from "@/components/layout/SidebarContext";
 import { Toaster } from "@/components/ui/Toaster";
 import { useAuthStore } from "@/store/auth.store";
+import { authApi } from "@/lib/api";
 import { Package } from "lucide-react";
 
 function LoadingScreen() {
@@ -28,22 +28,30 @@ function LoadingScreen() {
 }
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
-  const { user, fetchProfile, logout } = useAuthStore();
+  const { user, setUser, logout } = useAuthStore();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
+  // Наличие сессии больше нельзя определить чтением куки — она httpOnly.
+  // Единственный достоверный способ: спросить профиль. Ответ 401 означает,
+  // что сессии нет (интерцептор к этому моменту уже попробовал обновить токен).
   useEffect(() => {
-    const token = Cookies.get("access_token");
-    if (!token) {
-      logout();
-      router.replace("/login");
-      return;
-    }
-    if (!user) {
-      fetchProfile().finally(() => setChecking(false));
-    } else {
-      setChecking(false);
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await authApi.getProfile();
+        if (!cancelled) {
+          setUser(data);
+          setChecking(false);
+        }
+      } catch {
+        if (!cancelled) {
+          logout();
+          router.replace("/login");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   if (checking) return <LoadingScreen />;
