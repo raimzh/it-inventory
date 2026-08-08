@@ -11,7 +11,10 @@ import { InventoryCheck } from './entities/inventory-check.entity';
 import { InventoryCheckItem } from './entities/inventory-check-item.entity';
 
 import { StockService } from './stock.service';
+import { LowStockService } from './low-stock.service';
 import { ItemsService } from './items.service';
+import { User } from '../users/entities/user.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { EmployeesService } from './employees.service';
 import { RefsService } from './refs.service';
 import { InventoryCheckService } from './inventory-check.service';
@@ -30,14 +33,15 @@ const ENTITIES = [
 ];
 
 @Module({
-  imports: [TypeOrmModule.forFeature(ENTITIES)],
+  // User нужен, чтобы разослать сводку к закупу ответственным за него ролям
+  imports: [TypeOrmModule.forFeature([...ENTITIES, User]), NotificationsModule],
   controllers: [
     ItemsController, StockController, RefsController,
     EmployeesController, InventoryCheckController, WarehouseReportsController,
   ],
   providers: [
     StockService, ItemsService, EmployeesService, RefsService,
-    InventoryCheckService, WarehouseReportsService,
+    InventoryCheckService, WarehouseReportsService, LowStockService,
   ],
   exports: [StockService],
 })

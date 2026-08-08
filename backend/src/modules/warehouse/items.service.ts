@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import * as QRCode from 'qrcode';
 import { Item } from './entities/item.entity';
 import { StockUnit } from './entities/stock-unit.entity';
 import { StockMovement } from './entities/stock-movement.entity';
@@ -83,6 +84,35 @@ export class ItemsService {
       compatibility: compatibility.map((c: any) => ({ ...c, balance: Number(c.balance) })),
       units,
     };
+  }
+
+  /**
+   * QR-код позиции для этикетки на полку или коробку.
+   *
+   * В коде артикул, а не только идентификатор: даже если сканера под рукой
+   * не окажется, человек прочитает артикул глазами и найдёт позицию поиском.
+   */
+  async generateItemQr(id: string): Promise<{ item: Item; qr: string; payload: string }> {
+    const item = await this.itemRepo.findOne({ where: { id } });
+    if (!item) throw new NotFoundException('Позиция не найдена');
+    const payload = `SKU:${item.sku}|ID:${item.id}`;
+    const qr = await QRCode.toDataURL(payload, { width: 256, margin: 2 });
+    return { item, qr, payload };
+  }
+
+  /** Поиск позиции по отсканированному коду: штрихкод, артикул или QR. */
+  async findByCode(code: string): Promise<Item> {
+    const value = code.trim();
+    // Код из нашего QR имеет вид SKU:...|ID:...
+    const fromQr = /^SKU:([^|]+)\|ID:(.+)$/.exec(value);
+    const sku = fromQr ? fromQr[1] : value;
+
+    const item = await this.itemRepo.findOne({
+      where: [{ barcode: value }, { sku }],
+      relations: ['category'],
+    });
+    if (!item) throw new NotFoundException(`Позиция по коду «${value}» не найдена`);
+    return item;
   }
 
   /** Доступные к выдаче экземпляры (поштучный учёт). */

@@ -13,7 +13,8 @@ import {
   MOVEMENT_TYPE_LABELS, MOVEMENT_TYPE_COLORS, UNIT_STATUS_LABELS, UNIT_CONDITION_LABELS,
   MovementType, StockUnitStatus,
 } from "@/types";
-import { ArrowLeft, Trash2, AlertTriangle, Boxes, History, Link2, Package } from "lucide-react";
+import { ArrowLeft, Trash2, AlertTriangle, Boxes, History, Link2, Package, QrCode } from "lucide-react";
+import { ItemLabel } from "@/components/warehouse/ItemLabel";
 
 export default function ItemCardPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +27,13 @@ export default function ItemCardPage() {
     queryKey: ["wh-card", id], queryFn: () => warehouseApi.getItem(id).then(r => r.data),
   });
   const [writeOff, setWriteOff] = useState(false);
+  const [label, setLabel] = useState<{ qr: string } | null>(null);
+
+  const qrMutation = useMutation({
+    mutationFn: () => warehouseApi.itemQrCode(id).then(r => r.data),
+    onSuccess: (data: any) => setLabel({ qr: data.qr }),
+    onError: () => toast.error("Не удалось получить QR-код"),
+  });
 
   if (isLoading) return <div className="flex-1 flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full" /></div>;
   if (!data) notFound();
@@ -36,6 +44,9 @@ export default function ItemCardPage() {
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="Карточка позиции">
         <Button variant="secondary" size="sm" icon={<ArrowLeft className="w-3.5 h-3.5" />} onClick={() => router.push("/warehouse")}>Назад</Button>
+        <Button variant="secondary" size="sm" icon={<QrCode className="w-3.5 h-3.5" />} loading={qrMutation.isPending} onClick={() => qrMutation.mutate()}>
+          Этикетка
+        </Button>
         {canOperate && <Button variant="danger" size="sm" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => setWriteOff(true)}>Списать</Button>}
       </Header>
 
@@ -142,6 +153,7 @@ export default function ItemCardPage() {
       </div>
 
       {writeOff && <WriteOffModal card={data} onClose={() => setWriteOff(false)} onDone={() => { qc.invalidateQueries({ queryKey: ["wh-card", id] }); qc.invalidateQueries({ queryKey: ["wh-items"] }); setWriteOff(false); }} />}
+      {label && <ItemLabel item={item} qr={label.qr} onClose={() => setLabel(null)} />}
     </div>
   );
 }
