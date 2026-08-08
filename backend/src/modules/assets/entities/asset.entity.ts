@@ -1,4 +1,4 @@
-﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Department } from '../../departments/entities/department.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -22,7 +22,10 @@ export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'inventory_number', unique: true, length: 100 })
+  // unique здесь НЕ ставится: уникальность обеспечивает частичный индекс
+  // uq_assets_inventory_number_active (только среди неудалённых), иначе номер
+  // удалённой карточки остался бы занятым навсегда.
+  @Column({ name: 'inventory_number', length: 100 })
   inventoryNumber: string;
 
   @Column({ length: 500 })
@@ -104,6 +107,11 @@ export class Asset {
   // карточку уже изменил кто-то другой (см. AssetsService.update).
   @Column({ type: 'int', default: 1 })
   version: number;
+
+  // Мягкое удаление: TypeORM сам исключает такие записи из выборок,
+  // а история изменений при этом сохраняется.
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
