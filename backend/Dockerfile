@@ -1,11 +1,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-# --legacy-peer-deps: typeorm@1.1 объявляет ioredis как опциональный peer
-# ^5.0.4 для своего встроенного Redis-кэша, которым проект не пользуется
-# (свой CacheService/RedisThrottlerStorage на ioredis 6) — без флага чистая
-# установка падает с ERESOLVE на этом единственном несовпадении.
-RUN npm install --legacy-peer-deps
+# .npmrc обязателен: в нём legacy-peer-deps с объяснением, зачем он нужен.
+# Без него установка падает с ERESOLVE на опциональном peer ioredis у typeorm.
+COPY package*.json .npmrc ./
+RUN npm install
 COPY . .
 RUN npm run build
 
@@ -13,12 +11,8 @@ FROM node:20-alpine AS production
 WORKDIR /app
 RUN apk add --no-cache postgresql-client
 
-COPY package*.json ./
-# --legacy-peer-deps: typeorm@1.1 объявляет ioredis как опциональный peer
-# ^5.0.4 для своего встроенного Redis-кэша, которым проект не пользуется
-# (свой CacheService/RedisThrottlerStorage на ioredis 6) — без флага чистая
-# установка падает с ERESOLVE на этом единственном несовпадении.
-RUN npm install --legacy-peer-deps --only=production && npm cache clean --force
+COPY package*.json .npmrc ./
+RUN npm install --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
