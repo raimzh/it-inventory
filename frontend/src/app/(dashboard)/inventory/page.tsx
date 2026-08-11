@@ -43,6 +43,15 @@ interface PendingScan {
 
 const pendingKey = (sessionId: string) => `inventory-pending:${sessionId}`;
 
+function loadPending(sessionId: string): PendingScan[] {
+  try {
+    const raw = localStorage.getItem(pendingKey(sessionId));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function InventoryPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
@@ -117,20 +126,19 @@ export default function InventoryPage() {
     return map;
   }, [items]);
 
-  // Несохранённые сканы переживают перезагрузку: терять отсканированное
-  // из-за севшей батареи или случайного ухода со страницы нельзя
-  useEffect(() => {
-    if (!activeSession) return;
-    try {
-      const raw = localStorage.getItem(pendingKey(activeSession));
-      setPending(raw ? JSON.parse(raw) : []);
-    } catch {
-      setPending([]);
-    }
+  // Сброс при смене сессии — приём из документации React («adjusting state
+  // when props change»), а не эффект: React перезапускает компонент сразу,
+  // не фиксируя промежуточный кадр, поэтому лишнего каскада перерисовок нет.
+  // Несохранённые сканы при этом поднимаются из хранилища: терять
+  // отсканированное из-за севшей батареи или ухода со страницы нельзя.
+  const [seenSession, setSeenSession] = useState(activeSession);
+  if (activeSession !== seenSession) {
+    setSeenSession(activeSession);
+    setPending(activeSession ? loadPending(activeSession) : []);
     setRecent([]);
     setCounter(0);
     setBanner(null);
-  }, [activeSession]);
+  }
 
   useEffect(() => {
     if (!activeSession) return;

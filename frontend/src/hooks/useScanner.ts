@@ -81,13 +81,17 @@ export function useScanner({
   const [suspended, setSuspended] = useState(false);
   const [lastScan, setLastScan] = useState<ScanEvent | null>(null);
 
-  // Через ссылки, чтобы смена обработчика не пересоздавала слушатель
+  // Через ссылки, чтобы смена обработчика не пересоздавала слушатель.
+  // Присваивание — в эффекте, а не в теле: рендер под конкурентным React
+  // может быть отброшен, и запись во время него оставила бы неверное значение.
   const onScanRef = useRef(onScan);
   const onCaptureRef = useRef(onCapture);
   const onDroppedRef = useRef(onDropped);
-  onScanRef.current = onScan;
-  onCaptureRef.current = onCapture;
-  onDroppedRef.current = onDropped;
+  useEffect(() => {
+    onScanRef.current = onScan;
+    onCaptureRef.current = onCapture;
+    onDroppedRef.current = onDropped;
+  });
 
   const configKey = JSON.stringify(config ?? {});
 
