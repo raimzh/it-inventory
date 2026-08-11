@@ -39,14 +39,20 @@ export default function AdminPage() {
   const [deptForm, setDeptForm] = useState({ name: "", code: "" });
   const [deptError, setDeptError] = useState("");
 
+  // Проверка прав стоит ниже — так требуют правила хуков, — но запросы до неё
+  // выполняться не должны: все эндпоинты этой страницы закрыты ролью admin,
+  // и для остальных это лишний отказ 403 в консоли на каждом заходе.
+  const isAdmin = currentUser?.role === "admin";
+
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["users"],
     queryFn: () => usersApi.getAll().then(r => r.data),
+    enabled: isAdmin,
   });
   const { data: backups } = useQuery({
     queryKey: ["backups"],
     queryFn: () => backupApi.list().then(r => r.data),
-    enabled: tab === "backup",
+    enabled: isAdmin && tab === "backup",
   });
 
   const [userError, setUserError] = useState("");
@@ -80,7 +86,7 @@ export default function AdminPage() {
   const { data: departments, isLoading: deptsLoading } = useQuery<Department[]>({
     queryKey: ["departments"],
     queryFn: () => departmentsApi.getAll().then(r => r.data),
-    enabled: tab === "departments",
+    enabled: isAdmin && tab === "departments",
   });
 
   const saveDeptMutation = useMutation({
@@ -127,10 +133,10 @@ export default function AdminPage() {
   const { data: auditData, isLoading: auditLoading } = useQuery({
     queryKey: ["audit-logs"],
     queryFn: () => auditApi.getLogs({ limit: 100 }).then(r => r.data),
-    enabled: tab === "audit",
+    enabled: isAdmin && tab === "audit",
   });
 
-  if (currentUser?.role !== "admin") {
+  if (!isAdmin) {
     return (
       <div className="flex-1 flex items-center justify-center p-10">
         <div className="text-center">
