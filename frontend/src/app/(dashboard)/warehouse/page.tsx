@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { warehouseApi } from "@/lib/api";
@@ -9,10 +9,18 @@ import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/store/auth.store";
 import { useDebounce } from "@/hooks/useDebounce";
 import { toast } from "@/store/toast.store";
+import { useScanner } from "@/hooks/useScanner";
+import { feedback } from "@/lib/feedback";
+import { parseScanCode } from "@/lib/scan-code";
 import {
   WarehouseItem, ItemCategory, WarehouseRef, ITEM_UNITS,
 } from "@/types";
-import { Search, X, Plus, PackagePlus, Warehouse as WhIcon, AlertTriangle } from "lucide-react";
+import {
+  Search, X, Plus, PackagePlus, AlertTriangle, ScanLine, CheckCircle2,
+  XCircle, Loader2, Trash2, Keyboard,
+} from "lucide-react";
+
+const LAST_WAREHOUSE_KEY = "wh-last-warehouse";
 
 export default function WarehousePage() {
   const router = useRouter();
@@ -190,55 +198,239 @@ function CreateItemModal({ cats, onClose, onDone }: { cats: ItemCategory[]; onCl
 }
 
 // ── Модалка: приём на склад ──────────────────────────────────────────────────
+
+/** Состояние проверки серийного номера в наборе */
+type SerialState = "checking" | "free" | "taken" | "unchecked";
+interface ScannedSerial {
+  serial: string;
+  state: SerialState;
+  detail?: string;
+}
+
 function ReceiptModal({ item, items, onClose, onDone }: { item: WarehouseItem; items: WarehouseItem[]; onClose: () => void; onDone: () => void }) {
   const { data: whs } = useQuery<WarehouseRef[]>({ queryKey: ["wh-refs"], queryFn: () => warehouseApi.warehouses().then(r => r.data) });
   const [itemId, setItemId] = useState(item.id);
   const current = items.find(i => i.id === itemId) || item;
-  const [warehouseId, setWarehouseId] = useState("");
-  const [doc, setDoc] = useState("");
-  const [qty, setQty] = useState("1");
-  const [serials, setSerials] = useState("");
 
-  if (whs && !warehouseId && whs[0]) setWarehouseId(whs[0].id);
+  // Склад запоминается: оператор весь день принимает на один и тот же.
+  // Значение выводится, а не проставляется эффектом или (как было раньше)
+  // вызовом setState прямо во время рендера.
+  const [pickedWh, setPickedWh] = useState("");
+  const remembered = typeof window !== "undefined" ? localStorage.getItem(LAST_WAREHOUSE_KEY) : null;
+  const warehouseId = pickedWh
+    || (remembered && whs?.some(w => w.id === remembered) ? remembered : "")
+    || whs?.[0]?.id || "";
+
+  const [doc, setDoc] = useState("");
+  const [qty, setQty] = useState(0);
+  const [batch, setBatch] = useState<ScannedSerial[]>([]);
+  const [manual, setManual] = useState("");
+  const [banner, setBanner] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const bannerTimer = useRef<number | undefined>(undefined);
+
+  const showBanner = useCallback((kind: "success" | "error", text: string) => {
+    setBanner({ kind, text });
+    if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
+    bannerTimer.current = window.setTimeout(() => setBanner(null), kind === "success" ? 2000 : 4500);
+  }, []);
+
+  /**
+   * Проверка серийного номера на лету.
+   *
+   * Приём проводится ОДНОЙ транзакцией на весь набор, поэтому один уже занятый
+   * номер валит партию целиком — при двухстах позициях это означает начать
+   * заново. Атомарность правильная и остаётся, а занятые номера ловятся здесь,
+   * до отправки. 404 от эндпоинта — это хорошая новость: такого экземпляра
+   * ещё нет.
+   */
+  const checkSerial = useCallback(async (serial: string) => {
+    const mark = (state: SerialState, detail?: string) =>
+      setBatch(b => b.map(x => (x.serial === serial ? { ...x, state, detail } : x)));
+    try {
+      const { data: unit } = await warehouseApi.scanUnit(serial);
+      const where =
+        unit.status === "issued" ? `уже выдан: ${unit.currentHolder?.fullName || "сотруднику"}`
+        : unit.status === "in_stock" ? `уже на складе${unit.warehouse?.name ? ` «${unit.warehouse.name}»` : ""}`
+        : unit.status === "written_off" ? "числится списанным"
+        : unit.status === "in_repair" ? "числится в ремонте"
+        : "уже заведён";
+      mark("taken", where);
+      feedback.error();
+      showBanner("error", `${serial} — ${where}`);
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 404) mark("free");
+      else if (status === 409) { mark("taken", "подходит нескольким позициям"); feedback.error(); }
+      else mark("unchecked", "проверить не удалось");
+    }
+  }, [showBanner]);
+
+  const bump = useCallback(() => {
+    setQty(q => {
+      const next = q + 1;
+      feedback.success();
+      showBanner("success", `+1 → ${next} ${current.unit || ""}`.trim());
+      return next;
+    });
+  }, [current.unit, showBanner]);
+
+  /** Разбор скана: смысл кода зависит от режима учёта позиции. */
+  const handleCode = useCallback(async (raw: string) => {
+    const parsed = parseScanCode(raw);
+    const code = parsed.key;
+
+    if (!current.isSerialized) {
+      // Количественный учёт: скан этикетки позиции = +1.
+      // Артикул и идентификатор сверяем на месте, а штрихкод приходится
+      // разрешать на сервере: список позиций отдаёт проекцию без barcode.
+      if (parsed.id === current.id || code.toLowerCase() === current.sku?.toLowerCase()) {
+        bump();
+        return;
+      }
+      try {
+        const { data: found } = await warehouseApi.scanItem(raw);
+        if (found.id === current.id) bump();
+        else {
+          feedback.error();
+          showBanner("error", `Это «${found.name}», а принимаем «${current.name}». Смените позицию в списке выше.`);
+        }
+      } catch {
+        feedback.error();
+        showBanner("error", `${code} — позиция по такому коду не найдена`);
+      }
+      return;
+    }
+
+    // Поштучный учёт: ждём серийный номер экземпляра, а не полочную этикетку
+    if (parsed.kind === "item" || code.toLowerCase() === current.sku?.toLowerCase()) {
+      feedback.error();
+      showBanner("error", "Это этикетка позиции. Отсканируйте серийный номер самого экземпляра.");
+      return;
+    }
+    if (batch.some(b => b.serial.toLowerCase() === code.toLowerCase())) {
+      feedback.duplicate();
+      showBanner("error", `${code} — уже в этой партии`);
+      return;
+    }
+
+    setBatch(b => [...b, { serial: code, state: "checking" }]);
+    feedback.success();
+    showBanner("success", `${code} — добавлен, проверяем…`);
+    void checkSerial(code);
+  }, [current, batch, checkSerial, showBanner, bump]);
+
+  useScanner({
+    onScan: s => void handleCode(s.code),
+    enabled: true,
+    // Окно подавления повтора зависит от режима учёта, потому что повторный
+    // скан значит РАЗНОЕ. При поштучном учёте серийный номер уникален, и
+    // второе чтение того же — это дребезг или ошибка, его надо гасить.
+    // При количественном повторный скан той же этикетки — это способ
+    // пересчитать одинаковые коробки, и длинное окно просто мешает работать.
+    config: { dedupeWindowMs: current.isSerialized ? 1200 : 400 },
+  });
 
   const mut = useMutation({
     mutationFn: () => warehouseApi.receipt(current.isSerialized
-      ? { itemId, warehouseId, documentNumber: doc || undefined, units: serials.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ serialNumber: s })) }
-      : { itemId, warehouseId, documentNumber: doc || undefined, quantity: Number(qty) }),
-    onSuccess: (r: any) => { toast.success(`Принято на склад: ${r.data.count} шт.`); onDone(); },
-    onError: (e: any) => toast.error(e.response?.data?.message || "Не удалось принять"),
+      ? { itemId, warehouseId, documentNumber: doc || undefined, units: batch.map(b => ({ serialNumber: b.serial })) }
+      : { itemId, warehouseId, documentNumber: doc || undefined, quantity: qty }),
+    onSuccess: (r: any) => {
+      try { localStorage.setItem(LAST_WAREHOUSE_KEY, warehouseId); } catch { /* не критично */ }
+      toast.success(`Принято на склад: ${r.data.count} шт.`);
+      onDone();
+    },
+    onError: (e: any) => toast.error(e?.friendlyMessage || e.response?.data?.message || "Не удалось принять"),
   });
 
-  const serialCount = serials.split("\n").map(s => s.trim()).filter(Boolean).length;
+  const taken = batch.filter(b => b.state === "taken").length;
+  const checking = batch.filter(b => b.state === "checking").length;
+  const canSubmit = !!warehouseId && (current.isSerialized ? batch.length > 0 && taken === 0 && checking === 0 : qty > 0);
 
   return (
     <Modal open onClose={onClose} title="Принять на склад">
       <div className="space-y-4">
         <div><label className="label">Позиция</label>
-          <select className="input" value={itemId} onChange={e => setItemId(e.target.value)}>
+          <select className="input" value={itemId} onChange={e => { setItemId(e.target.value); setBatch([]); setQty(0); }}>
             {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.isSerialized ? "поштучно" : "кол-во"})</option>)}
           </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Склад</label>
-            <select className="input" value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
+            <select className="input" value={warehouseId} onChange={e => setPickedWh(e.target.value)}>
               {whs?.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div><label className="label">Накладная / документ</label><input className="input" value={doc} onChange={e => setDoc(e.target.value)} /></div>
         </div>
+
+        {/* Плашка результата скана */}
+        <div className={`rounded-xl px-4 py-3 min-h-[60px] flex items-center gap-3 text-sm transition-colors ${
+          banner?.kind === "success" ? "bg-emerald-500 text-white"
+          : banner?.kind === "error" ? "bg-red-600 text-white"
+          : "bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400"}`}>
+          {banner?.kind === "success" ? <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            : banner?.kind === "error" ? <XCircle className="w-5 h-5 flex-shrink-0" />
+            : <ScanLine className="w-5 h-5 flex-shrink-0" />}
+          <span className="font-semibold">
+            {banner ? banner.text
+              : current.isSerialized ? "Сканируйте серийные номера подряд" : "Сканируйте этикетку — каждый скан прибавит единицу"}
+          </span>
+        </div>
+
         {current.isSerialized ? (
           <div>
-            <label className="label">Серийные номера — по одному в строке ({serialCount})</label>
-            <textarea className="input h-32 font-mono text-sm" placeholder={"SN-0001\nSN-0002"} value={serials} onChange={e => setSerials(e.target.value)} />
+            <label className="label">
+              Серийные номера ({batch.length})
+              {taken > 0 && <span className="ml-2 text-red-600 dark:text-red-400">занятых: {taken} — приём не пройдёт</span>}
+            </label>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+              {batch.map(b => (
+                <span key={b.serial} className={`inline-flex items-center gap-1.5 pl-3 pr-1 py-1 coarse:min-h-11 rounded-xl text-sm font-mono border ${
+                  b.state === "taken" ? "bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300"
+                  : b.state === "checking" ? "bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-500"
+                  : b.state === "unchecked" ? "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                  : "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"}`}>
+                  {b.state === "checking" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {b.serial}
+                  {b.detail && <span className="text-[11px] not-italic opacity-80">({b.detail})</span>}
+                  <button onClick={() => setBatch(x => x.filter(y => y.serial !== b.serial))}
+                    className="p-1.5 coarse:p-2 rounded-lg hover:bg-black/10" aria-label={`Убрать ${b.serial}`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+              ))}
+              {!batch.length && <span className="text-sm text-gray-400 px-2 py-1">Пока пусто</span>}
+            </div>
           </div>
         ) : (
-          <div><label className="label">Количество ({current.unit})</label><input type="number" className="input" value={qty} onChange={e => setQty(e.target.value)} /></div>
+          <div>
+            <label className="label">Количество ({current.unit})</label>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setQty(q => Math.max(0, q - 1))}>−</Button>
+              <input type="number" className="input text-center w-28 text-lg font-bold" value={qty}
+                onChange={e => setQty(Math.max(0, Number(e.target.value) || 0))} />
+              <Button variant="secondary" onClick={() => setQty(q => q + 1)}>+</Button>
+            </div>
+          </div>
         )}
+
+        {/* Ручной ввод — для стёртых наклеек */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Keyboard className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9" placeholder={current.isSerialized ? "Серийный номер вручную" : "Артикул вручную"}
+              value={manual} onChange={e => setManual(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && manual.trim()) { handleCode(manual.trim()); setManual(""); } }} />
+          </div>
+          <Button variant="secondary" disabled={!manual.trim()} onClick={() => { handleCode(manual.trim()); setManual(""); }}>
+            Добавить
+          </Button>
+        </div>
+
         <div className="flex gap-3 justify-end pt-1">
           <Button variant="secondary" onClick={onClose}>Отмена</Button>
-          <Button loading={mut.isPending} disabled={!warehouseId || (current.isSerialized ? serialCount === 0 : !(Number(qty) > 0))} onClick={() => mut.mutate()}>
-            Принять
+          <Button loading={mut.isPending} disabled={!canSubmit} onClick={() => mut.mutate()}>
+            Принять{current.isSerialized && batch.length ? ` (${batch.length})` : ""}
           </Button>
         </div>
       </div>

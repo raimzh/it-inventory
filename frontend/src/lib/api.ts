@@ -192,6 +192,8 @@ export const warehouseApi = {
   availableUnits: (id: string) => api.get(`/warehouse/items/${id}/available-units`),
   itemQrCode: (id: string) => api.get(`/warehouse/items/${id}/qrcode`),
   scanItem: (code: string) => api.get(`/warehouse/items/scan/${encodeURIComponent(code)}`),
+  /** Экземпляр по серийному или инвентарному номеру. 404 означает «такого ещё нет». */
+  scanUnit: (code: string) => api.get(`/warehouse/stock/units/scan/${encodeURIComponent(code)}`),
   notifyLowStock: () => api.post("/warehouse/reports/notify-low-stock"),
   createItem: (data: any) => api.post("/warehouse/items", data),
   updateItem: (id: string, data: any) => api.patch(`/warehouse/items/${id}`, data),
