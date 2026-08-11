@@ -119,8 +119,10 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             <div className="text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">{user?.fullName}</div>
             <div className="text-[11px] text-gray-400 dark:text-slate-500 truncate">{roleLabel}</div>
           </div>
+          {/* coarse: кнопка показывалась только по наведению — с сенсорного
+              экрана она была недостижима в принципе */}
           <button onClick={handleLogout} title="Выйти"
-            className="p-1.5 rounded-lg text-gray-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100">
+            className="p-1.5 coarse:p-3 rounded-lg text-gray-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 coarse:opacity-100">
             <LogOut className="w-3.5 h-3.5" />
           </button>
         </div>

@@ -2,6 +2,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  Сенсорный ввод. Терминал сбора данных держат в перчатке, поэтому элементы
+  управления должны быть крупнее — но только там, где ввод действительно
+  пальцем. Через отдельный вариант это одна правка в @utility ниже вместо
+  сотни правок по страницам, и десктопная плотность остаётся прежней.
+*/
+@custom-variant coarse (@media (pointer: coarse));
+
 @theme {
   --color-primary-50: #f5f3ff;
   --color-primary-100: #ede9fe;
@@ -171,6 +179,8 @@
 
 @utility input {
   /* ── Inputs ────────────────────────────────────────── */
+  /* coarse: крупнее и с текстом 16px — читается под складским освещением */
+  @apply coarse:min-h-11 coarse:py-3 coarse:text-base;
   @apply w-full px-3.5 py-2.5 text-sm
       border border-gray-200 dark:border-slate-700 rounded-xl
       bg-white dark:bg-slate-800
