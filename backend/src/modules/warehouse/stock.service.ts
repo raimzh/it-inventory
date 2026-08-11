@@ -1,9 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { Item } from './entities/item.entity';
 import { StockUnit } from './entities/stock-unit.entity';
 import { StockMovement, MovementType } from './entities/stock-movement.entity';
+import { parseScanCode } from '../../common/scan/parse-scan-code';
 
 // ── Формы входных данных (валидируемые DTO — на уровне контроллеров) ─────────
 export interface ReceiptUnitInput {
@@ -57,6 +58,48 @@ export interface WriteOffInput {
 @Injectable()
 export class StockService {
   constructor(@InjectDataSource() private dataSource: DataSource) {}
+
+  /**
+   * Экземпляр по отсканированному коду — серийному или инвентарному номеру.
+   *
+   * Нужен там, где оператор сканирует сам прибор, а не полку: при выдаче это
+   * убирает выбор экземпляра из выпадающего списка, при приёмке — позволяет
+   * поймать занятый серийник до отправки партии (receipt проводится одной
+   * транзакцией, и один занятый номер иначе роняет всю партию).
+   *
+   * Возвращается вместе с держателем: оператору важно не «занято», а «у кого».
+   */
+  async findUnitByCode(code: string): Promise<StockUnit> {
+    const parsed = parseScanCode(code);
+    const repo = this.dataSource.getRepository(StockUnit);
+
+    const matches = await repo.find({
+      where: [{ serialNumber: parsed.key }, { inventoryNumber: parsed.key }],
+      relations: { item: true, warehouse: true, currentHolder: true },
+    });
+
+    if (matches.length === 0) {
+      throw new NotFoundException(`Экземпляр по коду «${parsed.raw}» не найден`);
+    }
+
+    // Серийный номер уникален только в пределах позиции (uq_unit_item_serial),
+    // а сканируют его, не выбирая позицию заранее. Совпадений может оказаться
+    // несколько — выбирать за оператора нельзя, это выдача не той вещи.
+    if (matches.length > 1) {
+      throw new ConflictException({
+        message: `Код «${parsed.raw}» подходит нескольким экземплярам — уточните позицию`,
+        candidates: matches.map(u => ({
+          id: u.id,
+          serialNumber: u.serialNumber,
+          itemId: u.itemId,
+          itemName: u.item?.name,
+          status: u.status,
+        })),
+      });
+    }
+
+    return matches[0];
+  }
 
   /**
    * Выполнить в транзакции. Без manager — открывается своя транзакция.

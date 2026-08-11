@@ -15,6 +15,14 @@ import { WH_OPERATE } from './warehouse.roles';
 export class StockController {
   constructor(private stock: StockService) {}
 
+  // Объявлено до остальных маршрутов намеренно: путь со статическими
+  // сегментами не должен перекрываться параметрическим (та же ловушка,
+  // что описана в items.controller.ts у scan/:code).
+  @Get('stock/units/scan/:code')
+  @UseGuards(RolesGuard) @Roles(...WH_OPERATE)
+  @ApiOperation({ summary: 'Экземпляр по серийному или инвентарному номеру' })
+  scanUnit(@Param('code') code: string) { return this.stock.findUnitByCode(code); }
+
   @Get('movements')
   @ApiOperation({ summary: 'Журнал операций' })
   journal(@Query() query: MovementQueryDto) { return this.stock.journal(query); }

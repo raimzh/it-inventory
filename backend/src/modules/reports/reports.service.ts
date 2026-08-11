@@ -47,7 +47,7 @@ export class ReportsService {
 
   async exportAssetsExcel(filters?: any): Promise<Buffer> {
     const assets = await this.assetRepo.find({
-      relations: ['department', 'owner'],
+      relations: { department: true, owner: true },
       order: { inventoryNumber: 'ASC' },
     });
 
@@ -101,7 +101,7 @@ export class ReportsService {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
     const items = await this.itemRepo.find({
       where: { sessionId },
-      relations: ['asset'],
+      relations: { asset: true },
       order: { asset: { inventoryNumber: 'ASC' } } as any,
     });
 

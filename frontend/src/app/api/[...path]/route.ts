@@ -31,8 +31,8 @@ const REFRESH_MAX_AGE = 60 * 60 * 24 * 7; // совпадает с REFRESH_EXPIR
  * Next подменяет глобальный fetch, и тот бросает UND_ERR_NOT_SUPPORTED при
  * пересылке тела запроса.
  */
-async function proxy(req: NextRequest, { params }: { params: { path: string[] } }) {
-  const path = params.path.join("/");
+async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const path = (await params).path.join("/");
   const search = req.nextUrl.search || "";
   const target = new URL(`${BACKEND()}/${path}${search}`);
 
@@ -46,6 +46,16 @@ async function proxy(req: NextRequest, { params }: { params: { path: string[] } 
   req.headers.forEach((value, key) => {
     if (!dropReqHeaders.includes(key.toLowerCase())) headers[key] = value;
   });
+
+  // Нормализуем цепочку X-Forwarded-For: оставляем только последнее звено.
+  // Его записал nginx, и это настоящий адрес клиента; всё, что левее, мог
+  // подставить сам клиент. Бэкенд включает `trust proxy` и берёт адрес
+  // справа, так что цепочку из чужих значений передавать ему незачем.
+  const xff = headers["x-forwarded-for"];
+  if (xff) {
+    const hops = xff.split(",").map(h => h.trim()).filter(Boolean);
+    if (hops.length) headers["x-forwarded-for"] = hops[hops.length - 1];
+  }
 
   // Подставляем токен из httpOnly-куки. Клиент его прислать не может —
   // он о нём не знает.

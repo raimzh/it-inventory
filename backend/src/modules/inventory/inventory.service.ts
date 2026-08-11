@@ -1,12 +1,16 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InventorySession, SessionStatus } from './entities/inventory-session.entity';
 import { InventoryItem } from './entities/inventory-item.entity';
 import { Asset, AssetStatus } from '../assets/entities/asset.entity';
+import { CheckItemDto, CreateSessionDto, ScanAssetDto } from './dto/inventory.dto';
+import { parseScanCode } from '../../common/scan/parse-scan-code';
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+
   constructor(
     @InjectRepository(InventorySession) private sessionRepo: Repository<InventorySession>,
     @InjectRepository(InventoryItem) private itemRepo: Repository<InventoryItem>,
@@ -22,21 +26,30 @@ export class InventoryService {
     return { data, total, page, limit };
   }
 
-  async createSession(dto: { name: string; description?: string; departmentId?: string }, userId: string, userName: string) {
+  async createSession(dto: CreateSessionDto, userId: string, userName: string) {
     const assets = await this.assetRepo.find(dto.departmentId ? { where: { departmentId: dto.departmentId, status: AssetStatus.ACTIVE } } : { where: { status: AssetStatus.ACTIVE } });
+    // Поля перечислены поимённо, а не через `...dto`: сессия сама ведёт свой
+    // статус, даты и счётчики, и принимать их из тела запроса нельзя.
     const session = await this.sessionRepo.save(
-      this.sessionRepo.create({ ...dto, createdBy: userId, createdByName: userName, totalAssets: assets.length }),
+      this.sessionRepo.create({
+        name: dto.name,
+        description: dto.description,
+        departmentId: dto.departmentId,
+        createdBy: userId,
+        createdByName: userName,
+        totalAssets: assets.length,
+      }),
     );
 
     if (assets.length > 0) {
       const items = assets.map(a => this.itemRepo.create({ sessionId: session.id, assetId: a.id, status: a.status }));
       await this.itemRepo.save(items, { chunk: 100 });
     }
-    return this.sessionRepo.findOne({ where: { id: session.id }, relations: ['department'] });
+    return this.sessionRepo.findOne({ where: { id: session.id }, relations: { department: true } });
   }
 
   async getSession(id: string) {
-    const session = await this.sessionRepo.findOne({ where: { id }, relations: ['department'] });
+    const session = await this.sessionRepo.findOne({ where: { id }, relations: { department: true } });
     if (!session) throw new NotFoundException('Сессия не найдена');
     return session;
   }
@@ -50,12 +63,22 @@ export class InventoryService {
     return { data, total, page, limit };
   }
 
-  async checkItem(sessionId: string, assetId: string, dto: { status: AssetStatus; comment?: string; locationFound?: string }, userId: string, userName: string) {
-    let item = await this.itemRepo.findOne({ where: { sessionId, assetId } });
+  async checkItem(sessionId: string, assetId: string, dto: CheckItemDto, userId: string, userName: string) {
+    const item = await this.itemRepo.findOne({ where: { sessionId, assetId } });
     if (!item) throw new NotFoundException('Позиция не найдена в сессии');
 
+    // Поля перечислены поимённо, а не через `...dto`: иначе телом запроса
+    // можно было переставить позицию в чужую сессию или на другую ОС.
+    // undefined TypeORM в UPDATE не включает, поэтому непришедший статус
+    // оставляет прежний — как и было до валидации.
     await this.itemRepo.update(item.id, {
-      ...dto, isChecked: true, checkedBy: userId, checkedByName: userName, checkedAt: new Date(),
+      status: dto.status,
+      comment: dto.comment,
+      locationFound: dto.locationFound,
+      isChecked: true,
+      checkedBy: userId,
+      checkedByName: userName,
+      checkedAt: new Date(),
     });
 
     await this.sessionRepo
@@ -65,12 +88,33 @@ export class InventoryService {
       .where('id = :sid', { sid: sessionId })
       .execute();
 
-    return this.itemRepo.findOne({ where: { id: item.id }, relations: ['asset'] });
+    return this.itemRepo.findOne({ where: { id: item.id }, relations: { asset: true } });
   }
 
-  async checkByInventoryNumber(sessionId: string, inventoryNumber: string, dto: any, userId: string, userName: string) {
-    const asset = await this.assetRepo.findOne({ where: { inventoryNumber } });
-    if (!asset) throw new NotFoundException(`ОС с номером ${inventoryNumber} не найдено`);
+  /**
+   * Отметка по отсканированному коду.
+   *
+   * Принимает и голый инвентарный номер, и полезную нагрузку QR-этикетки
+   * `INV:<номер>|ID:<uuid>`. Раньше разбора не было вовсе, и отсканированный
+   * QR основного средства просто давал 404 — работал только ручной ввод.
+   */
+  async checkByInventoryNumber(sessionId: string, dto: ScanAssetDto, userId: string, userName: string) {
+    const parsed = parseScanCode(dto.inventoryNumber);
+
+    // Идентификатор с этикетки надёжнее номера: номер могли поменять.
+    let asset = parsed.id ? await this.assetRepo.findOne({ where: { id: parsed.id } }) : null;
+
+    if (asset && parsed.kind === 'asset' && asset.inventoryNumber !== parsed.key) {
+      // Этикетку перепечатали или переклеили — доверяем идентификатору,
+      // но это стоит увидеть в журнале.
+      this.logger.warn(
+        `Этикетка расходится с базой: на ней номер «${parsed.key}», в базе «${asset.inventoryNumber}» (ОС ${asset.id})`,
+      );
+    }
+
+    if (!asset) asset = await this.assetRepo.findOne({ where: { inventoryNumber: parsed.key } });
+    if (!asset) throw new NotFoundException(`ОС с номером ${parsed.key} не найдено`);
+
     return this.checkItem(sessionId, asset.id, dto, userId, userName);
   }
 

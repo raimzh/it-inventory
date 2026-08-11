@@ -1,6 +1,282 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Сенсорный ввод. Терминал сбора данных держат в перчатке, поэтому элементы
+  управления должны быть крупнее — но только там, где ввод действительно
+  пальцем. Через отдельный вариант это одна правка в @utility ниже вместо
+  сотни правок по страницам, и десктопная плотность остаётся прежней.
+*/
+@custom-variant coarse (@media (pointer: coarse));
+
+@theme {
+  --color-primary-50: #f5f3ff;
+  --color-primary-100: #ede9fe;
+  --color-primary-200: #ddd6fe;
+  --color-primary-300: #c4b5fd;
+  --color-primary-400: #a78bfa;
+  --color-primary-500: #8b5cf6;
+  --color-primary-600: #7c3aed;
+  --color-primary-700: #6d28d9;
+  --color-primary-800: #5b21b6;
+  --color-primary-900: #4c1d95;
+  --color-primary-950: #2e1065;
+
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+
+  --shadow-card:
+    0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
+  --shadow-card-hover:
+    0 4px 12px -2px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --shadow-glow: 0 0 24px rgb(124 58 237 / 0.25);
+  --shadow-glow-sm: 0 0 12px rgb(124 58 237 / 0.15);
+
+  --animate-shimmer: shimmer 1.6s infinite;
+  --animate-fadeIn: fadeIn 0.2s ease-out;
+  --animate-slideUp: slideUp 0.25s ease-out;
+  --animate-slideInLeft: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-scaleIn: scaleIn 0.2s ease-out;
+  --animate-bounceDot: bounceDot 1.4s infinite ease-in-out both;
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes slideInLeft {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes bounceDot {
+    0%,
+    80%,
+    100% {
+      transform: scale(0.6);
+      opacity: 0.4;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility sidebar-link {
+  /* ── Sidebar ───────────────────────────────────────── */
+  @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+      text-slate-500 dark:text-slate-400
+      hover:bg-slate-100 dark:hover:bg-slate-800/70
+      hover:text-slate-900 dark:hover:text-white
+      transition-all duration-150 cursor-pointer select-none;
+  &.active {
+    @apply bg-primary-50 dark:bg-primary-950/50
+      text-primary-700 dark:text-primary-300;
+  }
+  &.active::before {
+    content: '';
+    @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5
+      bg-linear-to-b from-primary-500 to-violet-500 rounded-r-full;
+  }
+}
+
+@utility active {
+  &.sidebar-link {
+    @apply bg-primary-50 dark:bg-primary-950/50
+      text-primary-700 dark:text-primary-300;
+  }
+  &.sidebar-link::before {
+    content: '';
+    @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5
+      bg-linear-to-b from-primary-500 to-violet-500 rounded-r-full;
+  }
+  &.tab-item {
+    @apply bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-xs;
+  }
+}
+
+@utility card {
+  /* ── Cards ─────────────────────────────────────────── */
+  @apply bg-white dark:bg-slate-900 rounded-2xl
+      border border-gray-100 dark:border-slate-800
+      shadow-card;
+}
+
+@utility card-interactive {
+  @apply card transition-all duration-200
+      hover:shadow-card-hover hover:border-gray-200 dark:hover:border-slate-700;
+}
+
+@utility btn-primary {
+  /* ── Buttons ───────────────────────────────────────── */
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      bg-primary-600 hover:bg-primary-700 active:bg-primary-800
+      text-white text-sm font-semibold rounded-xl
+      shadow-xs transition-all duration-150
+      disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+@utility btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      bg-white dark:bg-slate-800
+      border border-gray-200 dark:border-slate-700
+      text-gray-700 dark:text-slate-300 text-sm font-medium rounded-xl
+      hover:bg-gray-50 dark:hover:bg-slate-700
+      hover:border-gray-300 dark:hover:border-slate-600
+      transition-all duration-150
+      disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+@utility input {
+  /* ── Inputs ────────────────────────────────────────── */
+  /* coarse: крупнее и с текстом 16px — читается под складским освещением */
+  @apply coarse:min-h-11 coarse:py-3 coarse:text-base;
+  @apply w-full px-3.5 py-2.5 text-sm
+      border border-gray-200 dark:border-slate-700 rounded-xl
+      bg-white dark:bg-slate-800
+      text-gray-900 dark:text-slate-100
+      placeholder-gray-400 dark:placeholder-slate-500
+      focus:outline-hidden focus:ring-2 focus:ring-primary-500/25
+      focus:border-primary-500 dark:focus:border-primary-400
+      transition-all duration-150;
+}
+
+@utility label {
+  @apply block text-xs font-semibold uppercase tracking-wide
+      text-gray-500 dark:text-slate-400 mb-1.5;
+}
+
+@utility skeleton {
+  /* ── Skeleton ──────────────────────────────────────── */
+  @apply relative overflow-hidden bg-gray-100 dark:bg-slate-800 rounded-xl;
+  &::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.5) 50%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: shimmer 1.6s infinite;
+  }
+  .dark &::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.04) 50%,
+      transparent 100%
+    );
+  }
+}
+
+@utility dark {
+  & .skeleton::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.04) 50%,
+      transparent 100%
+    );
+  }
+}
+
+@utility tabs-container {
+  /* ── Tabs ──────────────────────────────────────────── */
+  @apply flex gap-0.5 bg-gray-100 dark:bg-slate-800/80 p-1 rounded-xl w-fit;
+}
+
+@utility tab-item {
+  @apply px-4 py-1.5 text-sm rounded-lg font-medium transition-all duration-150
+      text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white;
+  &.active {
+    @apply bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-xs;
+  }
+}
+
+@utility th {
+  /* ── Table ─────────────────────────────────────────── */
+  @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
+      text-gray-400 dark:text-slate-500;
+}
+
+@utility td {
+  @apply px-4 py-3.5 text-sm;
+}
+
+@utility tr-hover {
+  @apply hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors duration-100;
+}
+
+@utility stat-icon {
+  /* ── Stat card icon container ──────────────────────── */
+  @apply flex-shrink-0 flex items-center justify-center
+      w-11 h-11 rounded-xl;
+}
+
+@utility glass {
+  @apply bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl;
+}
+
+@utility gradient-text {
+  @apply bg-linear-to-r from-primary-600 to-violet-500 bg-clip-text text-transparent;
+}
+
+@utility ring-focus {
+  @apply focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500
+      focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950;
+}
 
 @layer base {
   *, *::before, *::after {
@@ -25,130 +301,6 @@
 
   ::selection {
     @apply bg-primary-100 dark:bg-primary-900/60 text-primary-900 dark:text-primary-100;
-  }
-}
-
-@layer components {
-  /* ── Sidebar ───────────────────────────────────────── */
-  .sidebar-link {
-    @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-      text-slate-500 dark:text-slate-400
-      hover:bg-slate-100 dark:hover:bg-slate-800/70
-      hover:text-slate-900 dark:hover:text-white
-      transition-all duration-150 cursor-pointer select-none;
-  }
-  .sidebar-link.active {
-    @apply bg-primary-50 dark:bg-primary-950/50
-      text-primary-700 dark:text-primary-300;
-  }
-  .sidebar-link.active::before {
-    content: '';
-    @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5
-      bg-gradient-to-b from-primary-500 to-violet-500 rounded-r-full;
-  }
-
-  /* ── Cards ─────────────────────────────────────────── */
-  .card {
-    @apply bg-white dark:bg-slate-900 rounded-2xl
-      border border-gray-100 dark:border-slate-800
-      shadow-card;
-  }
-  .card-interactive {
-    @apply card transition-all duration-200
-      hover:shadow-card-hover hover:border-gray-200 dark:hover:border-slate-700;
-  }
-
-  /* ── Buttons ───────────────────────────────────────── */
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2
-      bg-primary-600 hover:bg-primary-700 active:bg-primary-800
-      text-white text-sm font-semibold rounded-xl
-      shadow-sm transition-all duration-150
-      disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2
-      bg-white dark:bg-slate-800
-      border border-gray-200 dark:border-slate-700
-      text-gray-700 dark:text-slate-300 text-sm font-medium rounded-xl
-      hover:bg-gray-50 dark:hover:bg-slate-700
-      hover:border-gray-300 dark:hover:border-slate-600
-      transition-all duration-150
-      disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-
-  /* ── Inputs ────────────────────────────────────────── */
-  .input {
-    @apply w-full px-3.5 py-2.5 text-sm
-      border border-gray-200 dark:border-slate-700 rounded-xl
-      bg-white dark:bg-slate-800
-      text-gray-900 dark:text-slate-100
-      placeholder-gray-400 dark:placeholder-slate-500
-      focus:outline-none focus:ring-2 focus:ring-primary-500/25
-      focus:border-primary-500 dark:focus:border-primary-400
-      transition-all duration-150;
-  }
-  .label {
-    @apply block text-xs font-semibold uppercase tracking-wide
-      text-gray-500 dark:text-slate-400 mb-1.5;
-  }
-
-  /* ── Skeleton ──────────────────────────────────────── */
-  .skeleton {
-    @apply relative overflow-hidden bg-gray-100 dark:bg-slate-800 rounded-xl;
-  }
-  .skeleton::after {
-    content: '';
-    @apply absolute inset-0;
-    background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.5) 50%, transparent 100%);
-    transform: translateX(-100%);
-    animation: shimmer 1.6s infinite;
-  }
-  .dark .skeleton::after {
-    background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.04) 50%, transparent 100%);
-  }
-
-  /* ── Tabs ──────────────────────────────────────────── */
-  .tabs-container {
-    @apply flex gap-0.5 bg-gray-100 dark:bg-slate-800/80 p-1 rounded-xl w-fit;
-  }
-  .tab-item {
-    @apply px-4 py-1.5 text-sm rounded-lg font-medium transition-all duration-150
-      text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white;
-  }
-  .tab-item.active {
-    @apply bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-sm;
-  }
-
-  /* ── Table ─────────────────────────────────────────── */
-  .th {
-    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
-      text-gray-400 dark:text-slate-500;
-  }
-  .td {
-    @apply px-4 py-3.5 text-sm;
-  }
-  .tr-hover {
-    @apply hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors duration-100;
-  }
-
-  /* ── Stat card icon container ──────────────────────── */
-  .stat-icon {
-    @apply flex-shrink-0 flex items-center justify-center
-      w-11 h-11 rounded-xl;
-  }
-}
-
-@layer utilities {
-  .glass {
-    @apply bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl;
-  }
-  .gradient-text {
-    @apply bg-gradient-to-r from-primary-600 to-violet-500 bg-clip-text text-transparent;
-  }
-  .ring-focus {
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500
-      focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950;
   }
 }
 

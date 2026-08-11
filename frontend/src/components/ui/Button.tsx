@@ -42,7 +42,9 @@ export function Button({
   return (
     <button
       className={clsx(
-        "inline-flex items-center justify-center font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed",
+        // coarse: нижний предел высоты для пальца в перчатке. Именно предел,
+        // а не замена размеров — десктопная плотность остаётся прежней.
+        "inline-flex items-center justify-center font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed coarse:min-h-11 coarse:px-4",
         variants[variant],
         sizes[size],
         className,

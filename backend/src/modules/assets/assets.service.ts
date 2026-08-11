@@ -72,7 +72,7 @@ export class AssetsService {
   async findOne(id: string): Promise<Asset> {
     const asset = await this.assetRepo.findOne({
       where: { id },
-      relations: ['department', 'owner'],
+      relations: { department: true, owner: true },
     });
     if (!asset) throw new NotFoundException('ОС не найдено');
     return asset;
@@ -148,7 +148,7 @@ export class AssetsService {
       if (changedFields.length) await m.save(AssetHistory, changedFields);
 
       this.invalidateStatsCache();
-      return m.findOneOrFail(Asset, { where: { id }, relations: ['department', 'owner'] });
+      return m.findOneOrFail(Asset, { where: { id }, relations: { department: true, owner: true } });
     });
   }
 

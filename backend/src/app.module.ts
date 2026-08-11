@@ -95,7 +95,7 @@ export class AppModule implements NestModule {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
     consumer
       .apply(MetricsMiddleware)
-      .exclude('metrics', 'metrics/(.*)', 'health', 'health/(.*)')
+      .exclude('metrics', 'metrics/*path', 'health', 'health/*path')
       .forRoutes('*');
   }
 }

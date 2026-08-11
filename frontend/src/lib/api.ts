@@ -10,6 +10,10 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
   // Куки httpOnly отправляются браузером сами, но только если это разрешено явно
   withCredentials: true,
+  // Без предела запрос на плохом складском Wi-Fi висит бесконечно: оператор
+  // видит вечный индикатор и не знает, прошло действие или нет. Пусть лучше
+  // честно упадёт — на экранах сканирования это ещё и озвучивается.
+  timeout: 15_000,
 });
 
 // Access-токен живёт 30 минут. Чтобы пользователя не выбрасывало на форму входа
@@ -29,6 +33,15 @@ api.interceptors.response.use(
     const original: any = err.config || {};
     const url: string = original.url || "";
     const isAuthCall = url.includes("/auth/login") || url.includes("/auth/refresh");
+
+    // Тайм-аут и обрыв связи приходят без ответа сервера, и сообщение у них
+    // техническое («timeout of 15000ms exceeded»). Подменяем на понятное —
+    // его увидит и оператор со сканером, и обычный пользователь.
+    if (!err.response) {
+      err.friendlyMessage = err.code === "ECONNABORTED"
+        ? "Сервер не ответил вовремя. Проверьте связь и повторите."
+        : "Нет связи с сервером. Проверьте подключение к сети.";
+    }
 
     if (err.response?.status === 401 && !isAuthCall && !original._retried) {
       original._retried = true;
@@ -179,6 +192,8 @@ export const warehouseApi = {
   availableUnits: (id: string) => api.get(`/warehouse/items/${id}/available-units`),
   itemQrCode: (id: string) => api.get(`/warehouse/items/${id}/qrcode`),
   scanItem: (code: string) => api.get(`/warehouse/items/scan/${encodeURIComponent(code)}`),
+  /** Экземпляр по серийному или инвентарному номеру. 404 означает «такого ещё нет». */
+  scanUnit: (code: string) => api.get(`/warehouse/stock/units/scan/${encodeURIComponent(code)}`),
   notifyLowStock: () => api.post("/warehouse/reports/notify-low-stock"),
   createItem: (data: any) => api.post("/warehouse/items", data),
   updateItem: (id: string, data: any) => api.patch(`/warehouse/items/${id}`, data),

@@ -1,6 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
+# .npmrc обязателен: в нём legacy-peer-deps с объяснением, зачем он нужен.
+# Без него установка падает с ERESOLVE на опциональном peer ioredis у typeorm.
+COPY package*.json .npmrc ./
 RUN npm install
 COPY . .
 RUN npm run build
@@ -9,8 +11,8 @@ FROM node:20-alpine AS production
 WORKDIR /app
 RUN apk add --no-cache postgresql-client
 
-COPY package*.json ./
-RUN npm install --only=production && npm cache clean --force
+COPY package*.json .npmrc ./
+RUN npm install --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 

@@ -7,6 +7,7 @@ import { StockUnit } from './entities/stock-unit.entity';
 import { StockMovement } from './entities/stock-movement.entity';
 import { ItemCompatibility } from './entities/item-compatibility.entity';
 import { CreateItemDto, UpdateItemDto, ItemQueryDto } from './dto/item.dto';
+import { parseScanCode } from '../../common/scan/parse-scan-code';
 
 @Injectable()
 export class ItemsService {
@@ -48,7 +49,7 @@ export class ItemsService {
 
   /** Карточка позиции: остатки по складам, история движений, совместимость, экземпляры. */
   async card(id: string) {
-    const item = await this.itemRepo.findOne({ where: { id }, relations: ['category'] });
+    const item = await this.itemRepo.findOne({ where: { id }, relations: { category: true } });
     if (!item) throw new NotFoundException('Позиция не найдена');
 
     const balances = await this.dataSource.query(
@@ -58,7 +59,7 @@ export class ItemsService {
 
     const movements = await this.mvRepo.find({
       where: { itemId: id },
-      relations: ['warehouse', 'employee', 'stockUnit'],
+      relations: { warehouse: true, employee: true, stockUnit: true },
       order: { createdAt: 'DESC' },
       take: 100,
     });
@@ -72,7 +73,7 @@ export class ItemsService {
     const units = item.isSerialized
       ? await this.unitRepo.find({
           where: { itemId: id },
-          relations: ['warehouse', 'currentHolder'],
+          relations: { warehouse: true, currentHolder: true },
           order: { createdAt: 'DESC' },
         })
       : [];
@@ -100,18 +101,29 @@ export class ItemsService {
     return { item, qr, payload };
   }
 
-  /** Поиск позиции по отсканированному коду: штрихкод, артикул или QR. */
+  /**
+   * Поиск позиции по отсканированному коду: штрихкод, артикул или QR.
+   *
+   * Идентификатор из QR имеет приоритет над артикулом: артикул могут
+   * переименовать, и тогда этикетка на коробке перестала бы находиться.
+   * Раньше идентификатор извлекался и тут же выбрасывался.
+   */
   async findByCode(code: string): Promise<Item> {
-    const value = code.trim();
-    // Код из нашего QR имеет вид SKU:...|ID:...
-    const fromQr = /^SKU:([^|]+)\|ID:(.+)$/.exec(value);
-    const sku = fromQr ? fromQr[1] : value;
+    const parsed = parseScanCode(code);
+
+    if (parsed.id) {
+      const byId = await this.itemRepo.findOne({
+        where: { id: parsed.id },
+        relations: { category: true },
+      });
+      if (byId) return byId;
+    }
 
     const item = await this.itemRepo.findOne({
-      where: [{ barcode: value }, { sku }],
-      relations: ['category'],
+      where: [{ barcode: parsed.raw }, { sku: parsed.key }],
+      relations: { category: true },
     });
-    if (!item) throw new NotFoundException(`Позиция по коду «${value}» не найдена`);
+    if (!item) throw new NotFoundException(`Позиция по коду «${parsed.raw}» не найдена`);
     return item;
   }
 
@@ -119,7 +131,7 @@ export class ItemsService {
   async availableUnits(itemId: string) {
     return this.unitRepo.find({
       where: { itemId, status: 'in_stock' },
-      relations: ['warehouse'],
+      relations: { warehouse: true },
       order: { serialNumber: 'ASC' },
     });
   }

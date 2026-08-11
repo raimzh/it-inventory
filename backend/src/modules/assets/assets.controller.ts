@@ -8,7 +8,8 @@ import { extname } from 'path';
 import { createReadStream } from 'fs';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
+import { IdentityThrottlerGuard } from '../../common/throttler/identity-throttler.guard';
 import { AssetsService } from './assets.service';
 import { ExcelImportService } from './excel-import.service';
 import { CreateAssetDto, UpdateAssetDto } from './dto/create-asset.dto';
@@ -80,7 +81,7 @@ export class AssetsController {
   @Post('excel/preview')
   // Разбор 20-мегабайтного файла — тяжёлая операция; ограничиваем частоту,
   // чтобы серией загрузок нельзя было занять весь CPU процесса.
-  @UseGuards(RolesGuard, ThrottlerGuard)
+  @UseGuards(RolesGuard, IdentityThrottlerGuard)
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Roles('admin', 'accountant')
   @UseInterceptors(FileInterceptor('file', {
@@ -96,7 +97,7 @@ export class AssetsController {
   }
 
   @Post('excel/import')
-  @UseGuards(RolesGuard, ThrottlerGuard)
+  @UseGuards(RolesGuard, IdentityThrottlerGuard)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Roles('admin', 'accountant')
   @UseInterceptors(FileInterceptor('file', {

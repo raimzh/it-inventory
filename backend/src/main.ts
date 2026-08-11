@@ -1,4 +1,5 @@
 ﻿import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -14,7 +15,16 @@ async function bootstrap() {
   // Падаем на старте, если секреты не заданы или заведомо слабые
   validateEnv();
 
-  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ['error', 'warn', 'log'] });
+
+  // Запросы приходят не напрямую от браузера, а по цепочке
+  // nginx → прокси-роут Next → бэкенд. Без этой строки req.ip — адрес
+  // последнего звена (для всех пользователей один и тот же ::1), поэтому
+  // и лимит попыток входа, и IP в журнале аудита были общими на всю
+  // установку. Единица — одно доверенное звено: адрес берётся из
+  // X-Forwarded-For справа, где nginx записал настоящего клиента,
+  // а подставленное самим клиентом начало заголовка игнорируется.
+  app.set('trust proxy', 1);
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
@@ -22,7 +32,7 @@ async function bootstrap() {
     .split(',').map(o => o.trim());
 
   app.enableCors({
-    origin: (origin, cb) => {
+    origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
       // Allow requests with no origin (mobile apps, curl, same-origin via nginx)
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
       cb(null, false);
