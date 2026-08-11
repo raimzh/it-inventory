@@ -39,17 +39,6 @@ export default function AdminPage() {
   const [deptForm, setDeptForm] = useState({ name: "", code: "" });
   const [deptError, setDeptError] = useState("");
 
-  if (currentUser?.role !== "admin") {
-    return (
-      <div className="flex-1 flex items-center justify-center p-10">
-        <div className="text-center">
-          <Shield className="w-12 h-12 text-gray-200 dark:text-slate-700 mx-auto mb-3" />
-          <p className="text-gray-400">Доступ только для администраторов</p>
-        </div>
-      </div>
-    );
-  }
-
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["users"],
     queryFn: () => usersApi.getAll().then(r => r.data),
@@ -140,6 +129,17 @@ export default function AdminPage() {
     queryFn: () => auditApi.getLogs({ limit: 100 }).then(r => r.data),
     enabled: tab === "audit",
   });
+
+  if (currentUser?.role !== "admin") {
+    return (
+      <div className="flex-1 flex items-center justify-center p-10">
+        <div className="text-center">
+          <Shield className="w-12 h-12 text-gray-200 dark:text-slate-700 mx-auto mb-3" />
+          <p className="text-gray-400">Доступ только для администраторов</p>
+        </div>
+      </div>
+    );
+  }
 
   const openCreate = () => {
     setEditUser(null);
