@@ -1,7 +1,8 @@
 ﻿import { Controller, Post, Get, Body, UseGuards, Request, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
+import { IdentityThrottlerGuard } from '../../common/throttler/identity-throttler.guard';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -15,7 +16,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(IdentityThrottlerGuard)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'Вход в систему' })
   async login(@Body() loginDto: LoginDto) {
@@ -28,7 +29,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(IdentityThrottlerGuard)
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ApiOperation({ summary: 'Обновить пару токенов по refresh-токену' })
   refresh(@Body() dto: RefreshDto) {

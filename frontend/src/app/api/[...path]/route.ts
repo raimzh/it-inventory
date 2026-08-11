@@ -47,6 +47,16 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
     if (!dropReqHeaders.includes(key.toLowerCase())) headers[key] = value;
   });
 
+  // Нормализуем цепочку X-Forwarded-For: оставляем только последнее звено.
+  // Его записал nginx, и это настоящий адрес клиента; всё, что левее, мог
+  // подставить сам клиент. Бэкенд включает `trust proxy` и берёт адрес
+  // справа, так что цепочку из чужих значений передавать ему незачем.
+  const xff = headers["x-forwarded-for"];
+  if (xff) {
+    const hops = xff.split(",").map(h => h.trim()).filter(Boolean);
+    if (hops.length) headers["x-forwarded-for"] = hops[hops.length - 1];
+  }
+
   // Подставляем токен из httpOnly-куки. Клиент его прислать не может —
   // он о нём не знает.
   const accessToken = req.cookies.get(ACCESS_COOKIE)?.value;
