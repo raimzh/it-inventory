@@ -5,8 +5,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { AssetStatus } from '../assets/entities/asset.entity';
 import { SessionStatus } from './entities/inventory-session.entity';
+import { CheckItemDto, CreateSessionDto, ScanAssetDto } from './dto/inventory.dto';
 
 // Инвентаризация — рабочий процесс, а не справочные данные: её ход, состав
 // и расхождения видны только тем, кто её проводит. Роль «Просмотр»
@@ -29,7 +29,7 @@ export class InventoryController {
   @Post('sessions')
   @UseGuards(RolesGuard)
   @Roles('admin', 'accountant', 'inventorizer')
-  createSession(@Body() dto: { name: string; description?: string; departmentId?: string }, @CurrentUser() user: any) {
+  createSession(@Body() dto: CreateSessionDto, @CurrentUser() user: any) {
     return this.inventoryService.createSession(dto, user.id, user.fullName);
   }
 
@@ -51,7 +51,7 @@ export class InventoryController {
   checkItem(
     @Param('sessionId') sessionId: string,
     @Param('assetId') assetId: string,
-    @Body() dto: { status: AssetStatus; comment?: string; locationFound?: string },
+    @Body() dto: CheckItemDto,
     @CurrentUser() user: any,
   ) {
     return this.inventoryService.checkItem(sessionId, assetId, dto, user.id, user.fullName);
@@ -62,10 +62,10 @@ export class InventoryController {
   @Roles('admin', 'accountant', 'inventorizer')
   scanByInventoryNumber(
     @Param('sessionId') sessionId: string,
-    @Body() dto: { inventoryNumber: string; status?: AssetStatus; comment?: string },
+    @Body() dto: ScanAssetDto,
     @CurrentUser() user: any,
   ) {
-    return this.inventoryService.checkByInventoryNumber(sessionId, dto.inventoryNumber, dto, user.id, user.fullName);
+    return this.inventoryService.checkByInventoryNumber(sessionId, dto, user.id, user.fullName);
   }
 
   @Post('sessions/:id/close')

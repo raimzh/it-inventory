@@ -18,6 +18,15 @@ export enum AssetStatus {
 @Index('idx_assets_category', ['category'])
 @Index('idx_assets_created_at', ['createdAt'])
 @Index('idx_assets_department_name', ['departmentName'])
+// Индексы ниже создаются миграциями, но объявлены и здесь намеренно.
+// Таблица assets синхронизируется вне продакшена (app.module.ts), а
+// synchronize удаляет всё, чего нет в метаданных сущности: без этих строк
+// запуск в режиме разработки молча сносил бы их — включая
+// uq_assets_inventory_number_active, единственное, что обеспечивает
+// уникальность инвентарного номера (в @Column она снята намеренно).
+@Index('uq_assets_inventory_number_active', ['inventoryNumber'], { unique: true, where: '"deleted_at" IS NULL' })
+@Index('idx_assets_deleted_at', ['deletedAt'])
+@Index('idx_assets_serial_number', ['serialNumber'], { where: '"deleted_at" IS NULL' })
 export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id: string;
