@@ -25,8 +25,12 @@ export class InventoryCheckService {
   async findOne(id: string) {
     const check = await this.checkRepo.findOne({ where: { id }, relations: { warehouse: true } });
     if (!check) throw new NotFoundException('Инвентаризация не найдена');
+    // barcode выбирается ради работы со сканером: без него код с полочной
+    // этикетки не сопоставить со строкой ведомости на стороне браузера,
+    // и на каждый скан пришлось бы ходить на сервер.
     const items = await this.dataSource.query(
-      `SELECT ci.id, ci.item_id AS "itemId", i.sku, i.name, i.unit, i.is_serialized AS "isSerialized",
+      `SELECT ci.id, ci.item_id AS "itemId", i.sku, i.name, i.unit, i.barcode,
+              i.is_serialized AS "isSerialized",
               ci.expected_qty AS "expectedQty", ci.actual_qty AS "actualQty", ci.note
        FROM inventory_check_items ci JOIN items i ON i.id = ci.item_id
        WHERE ci.check_id = $1 ORDER BY i.name`, [id]);
@@ -35,7 +39,13 @@ export class InventoryCheckService {
 
   /** Создать инвентаризацию: снимок ожидаемых остатков по складу (только количественный учёт). */
   async create(dto: CreateCheckDto, performedBy?: string) {
-    return this.dataSource.transaction(async (m) => {
+    // Из транзакции возвращается только идентификатор, а читаем мы ПОСЛЕ
+    // её завершения. Раньше findOne вызывался внутри: он ходит через
+    // this.checkRepo, то есть мимо транзакции, и не видел ещё не
+    // зафиксированную запись — бросал «Инвентаризация не найдена», отчего
+    // откатывалось создание целиком. Складская инвентаризация из-за этого
+    // не создавалась вообще никогда.
+    const id = await this.dataSource.transaction(async (m) => {
       const check = await m.save(m.create(InventoryCheck, { warehouseId: dto.warehouseId, performedBy, status: 'in_progress' }));
       const balances = await m.query(
         `SELECT item_id, balance FROM v_stock_balance
@@ -43,8 +53,9 @@ export class InventoryCheckService {
       for (const b of balances) {
         await m.insert(InventoryCheckItem, { checkId: check.id, itemId: b.item_id, expectedQty: b.balance });
       }
-      return this.findOne(check.id);
+      return check.id;
     });
+    return this.findOne(id);
   }
 
   /** Ввести фактические количества. */
