@@ -121,6 +121,18 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:e2e
 
+      - name: Разбор этикеток и поиск по коду
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:scan
+
+      - name: Уборка учётных записей
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:users
+
       - name: Остановка приложения
         if: always()
         working-directory: backend

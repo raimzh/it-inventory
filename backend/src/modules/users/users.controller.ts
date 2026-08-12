@@ -6,6 +6,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -40,5 +41,12 @@ export class UsersController {
 
   @Delete(':id')
   @Roles('admin')
-  remove(@Param('id') id: string) { return this.usersService.remove(id); }
+  @ApiOperation({
+    summary: 'Убрать пользователя',
+    description: 'Удаляет полностью, если за учётной записью не осталось следов; ' +
+      'иначе деактивирует и возвращает, что именно на неё ссылается.',
+  })
+  remove(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.usersService.remove(id, user?.id);
+  }
 }

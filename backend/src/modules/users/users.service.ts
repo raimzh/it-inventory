@@ -1,8 +1,8 @@
 ﻿import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User } from './entities/user.entity';
+import { User, UserRole } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -59,9 +59,69 @@ export class UsersService {
     return this.repo.save(user);
   }
 
-  async remove(id: string): Promise<void> {
+  /**
+   * Ссылающиеся на users таблицы берутся из схемы, а не перечисляются здесь.
+   * Список менялся уже трижды по ходу развития проекта, и забытая таблица
+   * означала бы либо отказ на ровном месте, либо — что хуже — молча
+   * потерянные данные (см. ниже про SET NULL).
+   */
+  private async userReferences(id: string): Promise<Record<string, number>> {
+    const fks: { table: string; column: string }[] = await this.repo.manager.query(`
+      SELECT tc.table_name AS table, kcu.column_name AS column
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name
+        JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
+       WHERE tc.constraint_type = 'FOREIGN KEY' AND ccu.table_name = 'users'`);
+
+    if (!fks.length) return {};
+
+    // Один запрос вместо N: считаем сразу по всем таблицам
+    const parts = fks.map(f => `SELECT '${f.table}.${f.column}' AS ref, count(*)::int AS n FROM "${f.table}" WHERE "${f.column}" = $1`);
+    const rows: { ref: string; n: number }[] = await this.repo.manager.query(parts.join(' UNION ALL '), [id]);
+
+    const found: Record<string, number> = {};
+    for (const r of rows) if (r.n > 0) found[r.ref] = r.n;
+    return found;
+  }
+
+  /**
+   * Убрать пользователя.
+   *
+   * Если за учётной записью не осталось ни одного следа — удаляем полностью.
+   * Если следы есть — только деактивируем: история изменений, журнал аудита и
+   * отметки инвентаризации должны сохранить, кто именно их сделал, иначе
+   * система перестаёт быть учётной.
+   *
+   * ВАЖНО про SET NULL: две связи (движения склада, ведомости) при удалении
+   * не выдали бы ошибку, а молча обнулили бы исполнителя. Поэтому наличие
+   * ссылок проверяется до удаления, а не перекладывается на внешние ключи.
+   */
+  async remove(id: string, actingUserId?: string): Promise<{ deleted: boolean; references?: Record<string, number> }> {
     const user = await this.findOne(id);
-    await this.repo.update(id, { isActive: false });
+
+    if (actingUserId && actingUserId === id) {
+      throw new ConflictException('Нельзя убрать собственную учётную запись');
+    }
+
+    // Без единого администратора система становится неуправляемой,
+    // и починить это через интерфейс уже нельзя
+    if (user.role === UserRole.ADMIN && user.isActive) {
+      const otherAdmins = await this.repo.count({
+        where: { role: UserRole.ADMIN, isActive: true, id: Not(id) },
+      });
+      if (otherAdmins === 0) {
+        throw new ConflictException('Это последний активный администратор — сначала назначьте другого');
+      }
+    }
+
+    const references = await this.userReferences(id);
+    if (Object.keys(references).length > 0) {
+      await this.repo.update(id, { isActive: false });
+      return { deleted: false, references };
+    }
+
+    await this.repo.delete(id);
+    return { deleted: true };
   }
 
   async getStats() {
