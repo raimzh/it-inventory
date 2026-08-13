@@ -7,6 +7,11 @@ import { SyncLog } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
 import { RefreshCw, CheckCircle2, XCircle, Clock, Database, Settings2 } from "lucide-react";
 
+// Скрытие второстепенных колонок на узком экране: параллельный заголовкам
+// массив классов по индексу (см. тот же приём в admin/page.tsx).
+const SYNC_COLS = ["Статус", "Начало", "Завершение", "Обработано", "Создано", "Обновлено", "Ошибки", "Запустил"];
+const SYNC_COL_HIDE = ["", "", "hidden md:table-cell", "hidden lg:table-cell", "hidden xl:table-cell", "hidden lg:table-cell", "", "hidden md:table-cell"];
+
 const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
   success: { label: "Успешно", cls: "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300", icon: CheckCircle2 },
   error: { label: "Ошибка", cls: "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300", icon: XCircle },
@@ -128,8 +133,8 @@ export default function SyncPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-slate-800/50">
                 <tr>
-                  {["Статус", "Начало", "Завершение", "Обработано", "Создано", "Обновлено", "Ошибки", "Запустил"].map(h => (
-                    <th key={h} className="th">{h}</th>
+                  {SYNC_COLS.map((h, i) => (
+                    <th key={h} className={`th ${SYNC_COL_HIDE[i]}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -147,13 +152,13 @@ export default function SyncPage() {
                           {cfg?.label}
                         </span>
                       </td>
-                      <td className="td text-xs text-gray-500 dark:text-slate-400 tabular-nums">{new Date(log.startedAt).toLocaleString("ru-RU")}</td>
-                      <td className="td text-xs text-gray-500 dark:text-slate-400 tabular-nums">{log.finishedAt ? new Date(log.finishedAt).toLocaleString("ru-RU") : "—"}</td>
-                      <td className="td text-center tabular-nums">{log.recordsProcessed}</td>
-                      <td className="td text-center text-green-600 dark:text-green-400 font-semibold tabular-nums">{log.recordsCreated}</td>
-                      <td className="td text-center text-blue-600 dark:text-blue-400 font-semibold tabular-nums">{log.recordsUpdated}</td>
-                      <td className="td text-center text-red-500 dark:text-red-400 font-semibold tabular-nums">{log.errors?.length || 0}</td>
-                      <td className="td text-xs text-gray-400 dark:text-slate-500">
+                      <td className={`td text-xs text-gray-500 dark:text-slate-400 tabular-nums ${SYNC_COL_HIDE[1]}`}>{new Date(log.startedAt).toLocaleString("ru-RU")}</td>
+                      <td className={`td text-xs text-gray-500 dark:text-slate-400 tabular-nums ${SYNC_COL_HIDE[2]}`}>{log.finishedAt ? new Date(log.finishedAt).toLocaleString("ru-RU") : "—"}</td>
+                      <td className={`td text-center tabular-nums ${SYNC_COL_HIDE[3]}`}>{log.recordsProcessed}</td>
+                      <td className={`td text-center text-green-600 dark:text-green-400 font-semibold tabular-nums ${SYNC_COL_HIDE[4]}`}>{log.recordsCreated}</td>
+                      <td className={`td text-center text-blue-600 dark:text-blue-400 font-semibold tabular-nums ${SYNC_COL_HIDE[5]}`}>{log.recordsUpdated}</td>
+                      <td className={`td text-center text-red-500 dark:text-red-400 font-semibold tabular-nums ${SYNC_COL_HIDE[6]}`}>{log.errors?.length || 0}</td>
+                      <td className={`td text-xs text-gray-400 dark:text-slate-500 ${SYNC_COL_HIDE[7]}`}>
                         {log.triggeredByName || (log.source === "scheduler" ? "По расписанию" : "—")}
                       </td>
                     </tr>

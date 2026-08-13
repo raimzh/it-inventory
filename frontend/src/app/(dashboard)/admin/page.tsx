@@ -21,6 +21,22 @@ const ROLE_COLORS: Record<UserRole, string> = {
   viewer: "gray",
 };
 
+// Скрытие второстепенных колонок на узком экране: параллельный заголовкам
+// массив классов по индексу — не переписываем заголовки в объекты ради
+// этого, чтобы не раздувать диф. Видны всегда: то, что идентифицирует
+// строку, и действия.
+const USER_COLS = ["ФИО", "Логин", "Email", "Роль", "Подразделение", "Активен", "Последний вход", "Действия"];
+const USER_COL_HIDE = ["", "hidden md:table-cell", "hidden md:table-cell", "", "hidden lg:table-cell", "hidden lg:table-cell", "hidden xl:table-cell", ""];
+
+const DEPT_COLS = ["Наименование", "Код", "Создано", "Действия"];
+const DEPT_COL_HIDE = ["", "", "hidden md:table-cell", ""];
+
+const BACKUP_COLS = ["Файл", "Размер", "Создан", "Действия"];
+const BACKUP_COL_HIDE = ["", "", "hidden md:table-cell", ""];
+
+const AUDIT_COLS = ["Время", "Пользователь", "Действие", "Ресурс", "IP"];
+const AUDIT_COL_HIDE = ["", "", "", "hidden lg:table-cell", "hidden xl:table-cell"];
+
 export default function AdminPage() {
   const { user: currentUser } = useAuthStore();
   const router = useRouter();
@@ -203,8 +219,8 @@ export default function AdminPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
                     <tr>
-                      {["ФИО", "Логин", "Email", "Роль", "Подразделение", "Активен", "Последний вход", "Действия"].map(h => (
-                        <th key={h} className="th">{h}</th>
+                      {USER_COLS.map((h, i) => (
+                        <th key={h} className={`th ${USER_COL_HIDE[i]}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -213,24 +229,24 @@ export default function AdminPage() {
                       <tr><td colSpan={8} className="td py-10 text-center text-gray-400">Загрузка...</td></tr>
                     ) : users?.map(u => (
                       <tr key={u.id} className={`tr-hover ${!u.isActive ? "opacity-50" : ""}`}>
-                        <td className="td font-semibold text-gray-900 dark:text-white">{u.fullName}</td>
-                        <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">{u.username}</td>
-                        <td className="td text-gray-500">{u.email}</td>
-                        <td className="td">
+                        <td className={`td font-semibold text-gray-900 dark:text-white ${USER_COL_HIDE[0]}`}>{u.fullName}</td>
+                        <td className={`td font-mono text-xs text-gray-500 dark:text-slate-400 ${USER_COL_HIDE[1]}`}>{u.username}</td>
+                        <td className={`td text-gray-500 ${USER_COL_HIDE[2]}`}>{u.email}</td>
+                        <td className={`td ${USER_COL_HIDE[3]}`}>
                           <Badge color={ROLE_COLORS[u.role] || "gray"}>
                             {USER_ROLE_LABELS[u.role]}
                           </Badge>
                         </td>
-                        <td className="td text-gray-500">{u.department || "—"}</td>
-                        <td className="td">
+                        <td className={`td text-gray-500 ${USER_COL_HIDE[4]}`}>{u.department || "—"}</td>
+                        <td className={`td ${USER_COL_HIDE[5]}`}>
                           <span className={`text-xs font-semibold ${u.isActive ? "text-green-600 dark:text-green-400" : "text-gray-400"}`}>
                             {u.isActive ? "Да" : "Нет"}
                           </span>
                         </td>
-                        <td className="td text-xs text-gray-400 dark:text-slate-500 tabular-nums">
+                        <td className={`td text-xs text-gray-400 dark:text-slate-500 tabular-nums ${USER_COL_HIDE[6]}`}>
                           {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("ru-RU") : "Никогда"}
                         </td>
-                        <td className="td">
+                        <td className={`td ${USER_COL_HIDE[7]}`}>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="xs" icon={<Pencil className="w-3 h-3" />} onClick={() => openEdit(u)}>
                               Изменить
@@ -271,8 +287,8 @@ export default function AdminPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
                     <tr>
-                      {["Наименование", "Код", "Создано", "Действия"].map(h => (
-                        <th key={h} className="th">{h}</th>
+                      {DEPT_COLS.map((h, i) => (
+                        <th key={h} className={`th ${DEPT_COL_HIDE[i]}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -281,12 +297,12 @@ export default function AdminPage() {
                       <tr><td colSpan={4} className="td py-10 text-center text-gray-400">Загрузка...</td></tr>
                     ) : departments?.length ? departments.map(d => (
                       <tr key={d.id} className="tr-hover">
-                        <td className="td font-semibold text-gray-900 dark:text-white">{d.name}</td>
-                        <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">{d.code || "—"}</td>
-                        <td className="td text-xs text-gray-400 dark:text-slate-500 tabular-nums">
+                        <td className={`td font-semibold text-gray-900 dark:text-white ${DEPT_COL_HIDE[0]}`}>{d.name}</td>
+                        <td className={`td font-mono text-xs text-gray-500 dark:text-slate-400 ${DEPT_COL_HIDE[1]}`}>{d.code || "—"}</td>
+                        <td className={`td text-xs text-gray-400 dark:text-slate-500 tabular-nums ${DEPT_COL_HIDE[2]}`}>
                           {d.createdAt ? new Date(d.createdAt).toLocaleDateString("ru-RU") : "—"}
                         </td>
-                        <td className="td">
+                        <td className={`td ${DEPT_COL_HIDE[3]}`}>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="xs" icon={<Pencil className="w-3 h-3" />} onClick={() => openEditDept(d)}>
                               Изменить
@@ -334,18 +350,18 @@ export default function AdminPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
                     <tr>
-                      {["Файл", "Размер", "Создан", "Действия"].map(h => (
-                        <th key={h} className="th">{h}</th>
+                      {BACKUP_COLS.map((h, i) => (
+                        <th key={h} className={`th ${BACKUP_COL_HIDE[i]}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
                     {backups?.map((b: any) => (
                       <tr key={b.filename} className="tr-hover">
-                        <td className="td font-mono text-xs text-gray-600 dark:text-slate-300">{b.filename}</td>
-                        <td className="td text-gray-500 tabular-nums">{(b.size / 1024 / 1024).toFixed(2)} МБ</td>
-                        <td className="td text-xs text-gray-400 tabular-nums">{new Date(b.createdAt).toLocaleString("ru-RU")}</td>
-                        <td className="td">
+                        <td className={`td font-mono text-xs text-gray-600 dark:text-slate-300 ${BACKUP_COL_HIDE[0]}`}>{b.filename}</td>
+                        <td className={`td text-gray-500 tabular-nums ${BACKUP_COL_HIDE[1]}`}>{(b.size / 1024 / 1024).toFixed(2)} МБ</td>
+                        <td className={`td text-xs text-gray-400 tabular-nums ${BACKUP_COL_HIDE[2]}`}>{new Date(b.createdAt).toLocaleString("ru-RU")}</td>
+                        <td className={`td ${BACKUP_COL_HIDE[3]}`}>
                           <a
                             href={backupApi.download(b.filename)}
                             download
@@ -378,8 +394,8 @@ export default function AdminPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
                     <tr>
-                      {["Время", "Пользователь", "Действие", "Ресурс", "IP"].map(h => (
-                        <th key={h} className="th">{h}</th>
+                      {AUDIT_COLS.map((h, i) => (
+                        <th key={h} className={`th ${AUDIT_COL_HIDE[i]}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -388,15 +404,15 @@ export default function AdminPage() {
                       <tr><td colSpan={5} className="td py-10 text-center text-gray-400">Загрузка...</td></tr>
                     ) : auditData?.data?.length ? auditData.data.map((log: any) => (
                       <tr key={log.id} className="tr-hover">
-                        <td className="td text-xs text-gray-400 dark:text-slate-500 tabular-nums whitespace-nowrap">
+                        <td className={`td text-xs text-gray-400 dark:text-slate-500 tabular-nums whitespace-nowrap ${AUDIT_COL_HIDE[0]}`}>
                           {new Date(log.createdAt).toLocaleString("ru-RU")}
                         </td>
-                        <td className="td text-gray-700 dark:text-slate-300">{log.username || "—"}</td>
-                        <td className="td font-mono text-xs text-gray-600 dark:text-slate-400">{log.action}</td>
-                        <td className="td text-gray-500 dark:text-slate-400">
+                        <td className={`td text-gray-700 dark:text-slate-300 ${AUDIT_COL_HIDE[1]}`}>{log.username || "—"}</td>
+                        <td className={`td font-mono text-xs text-gray-600 dark:text-slate-400 ${AUDIT_COL_HIDE[2]}`}>{log.action}</td>
+                        <td className={`td text-gray-500 dark:text-slate-400 ${AUDIT_COL_HIDE[3]}`}>
                           {log.resource || "—"}{log.resourceId ? <span className="text-gray-300 dark:text-slate-600"> · {String(log.resourceId).slice(0, 8)}</span> : null}
                         </td>
-                        <td className="td text-xs text-gray-400 dark:text-slate-500 font-mono">{log.ipAddress || "—"}</td>
+                        <td className={`td text-xs text-gray-400 dark:text-slate-500 font-mono ${AUDIT_COL_HIDE[4]}`}>{log.ipAddress || "—"}</td>
                       </tr>
                     )) : (
                       <tr><td colSpan={5} className="td py-10 text-center text-gray-400">Записи аудита отсутствуют</td></tr>

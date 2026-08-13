@@ -367,13 +367,13 @@ export default function ExcelImportModal({
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-gray-50 dark:bg-slate-800">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Строка</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs hidden md:table-cell">Строка</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Действие</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Инв. номер</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Наименование</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Подразделение</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Ответственный</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-500 text-xs">Остат. ст-ть</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs hidden md:table-cell">Наименование</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs hidden md:table-cell">Подразделение</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs hidden md:table-cell">Ответственный</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-500 text-xs hidden md:table-cell">Остат. ст-ть</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Ошибка</th>
                       </tr>
                     </thead>
@@ -385,17 +385,17 @@ export default function ExcelImportModal({
                             row.action === "error" ? "bg-red-50/50 dark:bg-red-900/10" :
                             row.action === "skip"  ? "opacity-50" : ""}`}
                         >
-                          <td className="px-3 py-2 text-gray-400 text-xs">{row.rowNum}</td>
+                          <td className="px-3 py-2 text-gray-400 text-xs hidden md:table-cell">{row.rowNum}</td>
                           <td className="px-3 py-2">{actionBadge(row.action)}</td>
                           <td className="px-3 py-2 font-mono text-xs text-gray-700 dark:text-slate-300">
                             {row.inventoryNumber ?? "—"}
                           </td>
-                          <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[200px] truncate">
+                          <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[200px] truncate hidden md:table-cell">
                             {row.name ?? "—"}
                           </td>
-                          <td className="px-3 py-2 text-gray-500 text-xs">{row.departmentName || "—"}</td>
-                          <td className="px-3 py-2 text-gray-500 text-xs">{row.responsiblePerson || "—"}</td>
-                          <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300 text-xs">
+                          <td className="px-3 py-2 text-gray-500 text-xs hidden md:table-cell">{row.departmentName || "—"}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs hidden md:table-cell">{row.responsiblePerson || "—"}</td>
+                          <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300 text-xs hidden md:table-cell">
                             {row.residualValue != null && !isNaN(Number(row.residualValue))
                               ? Number(row.residualValue).toLocaleString("ru-RU") + " ₽"
                               : "—"}

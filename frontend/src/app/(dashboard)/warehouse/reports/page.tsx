@@ -37,14 +37,18 @@ function TabBtn({ active, onClick, icon, children }: any) {
 function ToPurchase() {
   const { data } = useQuery<any[]>({ queryKey: ["wh-rep-purchase"], queryFn: () => warehouseApi.reportToPurchase().then(r => r.data) });
   return (
-    <Card headers={["Артикул", "Наименование", "Остаток", "Точка заказа", "Ср. расход/мес"]}>
+    <Card headers={[
+      { label: "Артикул" }, { label: "Наименование" }, { label: "Остаток" },
+      { label: "Точка заказа", className: "hidden md:table-cell" },
+      { label: "Ср. расход/мес", className: "hidden lg:table-cell" },
+    ]}>
       {data?.length ? data.map(r => (
         <tr key={r.itemId}>
           <td className="td font-mono text-xs text-gray-500">{r.sku}</td>
           <td className="td font-medium text-gray-900 dark:text-white">{r.name}</td>
           <td className="td text-right tabular-nums text-amber-600 font-semibold">{r.balance}</td>
-          <td className="td text-right tabular-nums text-gray-500">{r.minStock}</td>
-          <td className="td text-right tabular-nums">{r.avgMonthly}</td>
+          <td className="td text-right tabular-nums text-gray-500 hidden md:table-cell">{r.minStock}</td>
+          <td className="td text-right tabular-nums hidden lg:table-cell">{r.avgMonthly}</td>
         </tr>
       )) : <Empty cols={5} text="Все позиции выше точки заказа" />}
     </Card>
@@ -61,10 +65,13 @@ function Consumption() {
         <div><label className="label">С даты</label><input type="date" className="input w-40" value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><label className="label">По дату</label><input type="date" className="input w-40" value={to} onChange={e => setTo(e.target.value)} /></div>
       </div>
-      <Card headers={["Подразделение", "Сотрудник", "Материал", "Выдано"]}>
+      <Card headers={[
+        { label: "Подразделение", className: "hidden md:table-cell" },
+        { label: "Сотрудник" }, { label: "Материал" }, { label: "Выдано" },
+      ]}>
         {data?.length ? data.map((r, i) => (
           <tr key={i}>
-            <td className="td text-gray-500">{r.department}</td>
+            <td className="td text-gray-500 hidden md:table-cell">{r.department}</td>
             <td className="td font-medium text-gray-900 dark:text-white">{r.employee || "—"}</td>
             <td className="td">{r.item}</td>
             <td className="td text-right tabular-nums font-medium">{r.issuedQty} {r.unit}</td>
@@ -78,27 +85,34 @@ function Consumption() {
 function Holdings() {
   const { data } = useQuery<any[]>({ queryKey: ["wh-rep-hold"], queryFn: () => warehouseApi.reportHoldings().then(r => r.data) });
   return (
-    <Card headers={["Подразделение", "Сотрудник", "Техника", "Серийный №", "Инв. №"]}>
+    <Card headers={[
+      { label: "Подразделение", className: "hidden md:table-cell" },
+      { label: "Сотрудник" }, { label: "Техника" },
+      { label: "Серийный №", className: "hidden lg:table-cell" },
+      { label: "Инв. №", className: "hidden xl:table-cell" },
+    ]}>
       {data?.length ? data.map((r, i) => (
         <tr key={i}>
-          <td className="td text-gray-500">{r.department}</td>
+          <td className="td text-gray-500 hidden md:table-cell">{r.department}</td>
           <td className="td font-medium text-gray-900 dark:text-white">{r.employee}</td>
           <td className="td">{r.item}</td>
-          <td className="td font-mono text-xs text-gray-500">{r.serialNumber}</td>
-          <td className="td text-gray-500">{r.inventoryNumber || "—"}</td>
+          <td className="td font-mono text-xs text-gray-500 hidden lg:table-cell">{r.serialNumber}</td>
+          <td className="td text-gray-500 hidden xl:table-cell">{r.inventoryNumber || "—"}</td>
         </tr>
       )) : <Empty cols={5} text="Ничего не выдано на руки" />}
     </Card>
   );
 }
 
-function Card({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+interface ReportColumn { label: string; className?: string; }
+
+function Card({ headers, children }: { headers: ReportColumn[]; children: React.ReactNode }) {
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
-            <tr>{headers.map((h, i) => <th key={i} className={`th ${i >= headers.length - 1 || h.includes("расход") || h === "Остаток" || h === "Выдано" || h === "Точка заказа" ? "" : ""}`}>{h}</th>)}</tr>
+            <tr>{headers.map((h, i) => <th key={i} className={`th ${h.className || ""}`}>{h.label}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">{children}</tbody>
         </table>

@@ -164,14 +164,14 @@ function CreateItemModal({ cats, onClose, onDone }: { cats: ItemCategory[]; onCl
   return (
     <Modal open onClose={onClose} title="Новая позиция номенклатуры">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label className="label">Артикул *</label><input className="input" value={f.sku} onChange={e => set("sku", e.target.value)} /></div>
           <div><label className="label">Единица</label>
             <select className="input" value={f.unit} onChange={e => set("unit", e.target.value)}>{ITEM_UNITS.map(u => <option key={u}>{u}</option>)}</select>
           </div>
         </div>
         <div><label className="label">Наименование *</label><input className="input" value={f.name} onChange={e => set("name", e.target.value)} /></div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label className="label">Категория</label>
             <select className="input" value={f.categoryId} onChange={e => set("categoryId", e.target.value)}>
               <option value="">Не выбрано</option>
@@ -180,7 +180,7 @@ function CreateItemModal({ cats, onClose, onDone }: { cats: ItemCategory[]; onCl
           </div>
           <div><label className="label">Точка заказа (мин. остаток)</label><input type="number" className="input" value={f.minStock} onChange={e => set("minStock", e.target.value)} /></div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label className="label">Производитель</label><input className="input" value={f.manufacturer} onChange={e => set("manufacturer", e.target.value)} /></div>
           <div><label className="label">Модель</label><input className="input" value={f.model} onChange={e => set("model", e.target.value)} /></div>
         </div>
@@ -354,7 +354,7 @@ function ReceiptModal({ item, items, onClose, onDone }: { item: WarehouseItem; i
             {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.isSerialized ? "поштучно" : "кол-во"})</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label className="label">Склад</label>
             <select className="input" value={warehouseId} onChange={e => setPickedWh(e.target.value)}>
               {whs?.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
