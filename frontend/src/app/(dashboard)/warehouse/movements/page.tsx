@@ -66,20 +66,20 @@ export default function MovementsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800"><tr>
-                <th className="th">Дата</th><th className="th">Операция</th><th className="th">Позиция</th>
-                <th className="th text-right">Кол-во</th><th className="th">Экземпляр</th><th className="th">Сотрудник</th>
+                <th className="th hidden md:table-cell">Дата</th><th className="th">Операция</th><th className="th">Позиция</th>
+                <th className="th text-right">Кол-во</th><th className="th hidden lg:table-cell">Экземпляр</th><th className="th hidden lg:table-cell">Сотрудник</th>
                 <th className="th hidden lg:table-cell">Документ / причина</th><th className="th text-right">Действия</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
                 {isLoading ? Array(8).fill(0).map((_, i) => <tr key={i}><td className="td" colSpan={8}><div className="skeleton h-4 w-full" /></td></tr>)
                   : data?.data.map(mv => (
                     <tr key={mv.id}>
-                      <td className="td text-gray-500 text-xs whitespace-nowrap">{new Date(mv.createdAt).toLocaleString("ru-RU")}</td>
+                      <td className="td text-gray-500 text-xs whitespace-nowrap hidden md:table-cell">{new Date(mv.createdAt).toLocaleString("ru-RU")}</td>
                       <td className="td"><span className={`text-xs px-2 py-0.5 rounded-full ${MOVEMENT_TYPE_COLORS[mv.type]}`}>{MOVEMENT_TYPE_LABELS[mv.type]}</span></td>
                       <td className="td font-medium text-gray-900 dark:text-white">{mv.item?.name}</td>
                       <td className={`td text-right tabular-nums font-medium ${Number(mv.quantity) < 0 ? "text-red-600" : "text-green-600"}`}>{Number(mv.quantity) > 0 ? "+" : ""}{mv.quantity}</td>
-                      <td className="td text-gray-500 text-xs font-mono">{mv.stockUnit?.serialNumber || "—"}</td>
-                      <td className="td text-gray-500">{mv.employee?.fullName || "—"}</td>
+                      <td className="td text-gray-500 text-xs font-mono hidden lg:table-cell">{mv.stockUnit?.serialNumber || "—"}</td>
+                      <td className="td text-gray-500 hidden lg:table-cell">{mv.employee?.fullName || "—"}</td>
                       <td className="td text-gray-500 hidden lg:table-cell text-xs max-w-[200px] truncate">{mv.documentNumber || mv.reason || "—"}</td>
                       <td className="td text-right">
                         {canOperate && !mv.reversalOf && (mv.type === "issue" || mv.type === "write_off") && (

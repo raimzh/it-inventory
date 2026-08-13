@@ -15,6 +15,17 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: "owners", label: "История владельцев", icon: User },
 ];
 
+// Скрытие второстепенных колонок на узком экране: параллельный заголовкам
+// массив классов по индексу (см. тот же приём в admin/page.tsx).
+const MISSING_COLS = ["Инв. номер", "Наименование", "Подразделение", "Ответственный", "Статус", "Обновлено"];
+const MISSING_COL_HIDE = ["", "", "hidden md:table-cell", "hidden lg:table-cell", "", "hidden md:table-cell"];
+
+const DEPT_REPORT_COLS = ["Подразделение", "Всего ОС", "В наличии", "Не найдено", "Суммарная стоимость"];
+const DEPT_REPORT_COL_HIDE = ["", "", "", "hidden md:table-cell", "hidden lg:table-cell"];
+
+const OWNER_COLS = ["ОС", "Поле", "Было", "Стало", "Кем изменено", "Дата"];
+const OWNER_COL_HIDE = ["", "hidden md:table-cell", "", "", "hidden md:table-cell", "hidden lg:table-cell"];
+
 export default function ReportsPage() {
   const [exportLoading, setExportLoading] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("missing");
@@ -76,7 +87,7 @@ export default function ReportsPage() {
           <FileSpreadsheet className="w-4 h-4 text-gray-400 flex-shrink-0" />
           <span className="text-sm font-medium text-gray-700 dark:text-slate-300">Инвентаризационная ведомость:</span>
           <select
-            className="input w-64"
+            className="input w-full sm:w-64"
             value={selectedSession}
             onChange={e => setSelectedSession(e.target.value)}
           >
@@ -125,20 +136,20 @@ export default function ReportsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
-                    {["Инв. номер", "Наименование", "Подразделение", "Ответственный", "Статус", "Обновлено"].map(h => (
-                      <th key={h} className="th">{h}</th>
+                    {MISSING_COLS.map((h, i) => (
+                      <th key={h} className={`th ${MISSING_COL_HIDE[i]}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
                   {missingAssets?.map((a: any) => (
                     <tr key={a.id} className="tr-hover">
-                      <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">{a.inventoryNumber}</td>
-                      <td className="td font-semibold text-gray-900 dark:text-white max-w-xs truncate">{a.name}</td>
-                      <td className="td text-gray-500">{a.departmentName || "—"}</td>
-                      <td className="td text-gray-500">{a.responsiblePerson || "—"}</td>
-                      <td className="td"><AssetStatusBadge status={a.status} /></td>
-                      <td className="td text-xs text-gray-400">{new Date(a.updatedAt).toLocaleDateString("ru-RU")}</td>
+                      <td className={`td font-mono text-xs text-gray-500 dark:text-slate-400 ${MISSING_COL_HIDE[0]}`}>{a.inventoryNumber}</td>
+                      <td className={`td font-semibold text-gray-900 dark:text-white max-w-xs truncate ${MISSING_COL_HIDE[1]}`}>{a.name}</td>
+                      <td className={`td text-gray-500 ${MISSING_COL_HIDE[2]}`}>{a.departmentName || "—"}</td>
+                      <td className={`td text-gray-500 ${MISSING_COL_HIDE[3]}`}>{a.responsiblePerson || "—"}</td>
+                      <td className={`td ${MISSING_COL_HIDE[4]}`}><AssetStatusBadge status={a.status} /></td>
+                      <td className={`td text-xs text-gray-400 ${MISSING_COL_HIDE[5]}`}>{new Date(a.updatedAt).toLocaleDateString("ru-RU")}</td>
                     </tr>
                   ))}
                   {!missingAssets?.length && (
@@ -160,19 +171,19 @@ export default function ReportsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
-                    {["Подразделение", "Всего ОС", "В наличии", "Не найдено", "Суммарная стоимость"].map(h => (
-                      <th key={h} className="th">{h}</th>
+                    {DEPT_REPORT_COLS.map((h, i) => (
+                      <th key={h} className={`th ${DEPT_REPORT_COL_HIDE[i]}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
                   {deptReport?.map((d: any, i: number) => (
                     <tr key={i} className="tr-hover">
-                      <td className="td font-semibold text-gray-900 dark:text-white">{d.department || "Без подразделения"}</td>
-                      <td className="td text-gray-600 dark:text-slate-400 tabular-nums">{d.total}</td>
-                      <td className="td text-green-600 dark:text-green-400 font-semibold tabular-nums">{d.active}</td>
-                      <td className="td text-red-500 dark:text-red-400 font-semibold tabular-nums">{d.notFound}</td>
-                      <td className="td text-gray-600 dark:text-slate-400 tabular-nums">{Number(d.totalValue || 0).toLocaleString("ru-RU")} ₽</td>
+                      <td className={`td font-semibold text-gray-900 dark:text-white ${DEPT_REPORT_COL_HIDE[0]}`}>{d.department || "Без подразделения"}</td>
+                      <td className={`td text-gray-600 dark:text-slate-400 tabular-nums ${DEPT_REPORT_COL_HIDE[1]}`}>{d.total}</td>
+                      <td className={`td text-green-600 dark:text-green-400 font-semibold tabular-nums ${DEPT_REPORT_COL_HIDE[2]}`}>{d.active}</td>
+                      <td className={`td text-red-500 dark:text-red-400 font-semibold tabular-nums ${DEPT_REPORT_COL_HIDE[3]}`}>{d.notFound}</td>
+                      <td className={`td text-gray-600 dark:text-slate-400 tabular-nums ${DEPT_REPORT_COL_HIDE[4]}`}>{Number(d.totalValue || 0).toLocaleString("ru-RU")} ₽</td>
                     </tr>
                   ))}
                   {!deptReport?.length && (
@@ -194,20 +205,20 @@ export default function ReportsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
-                    {["ОС", "Поле", "Было", "Стало", "Кем изменено", "Дата"].map(h => (
-                      <th key={h} className="th">{h}</th>
+                    {OWNER_COLS.map((h, i) => (
+                      <th key={h} className={`th ${OWNER_COL_HIDE[i]}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
                   {ownerHistory?.map((h: any) => (
                     <tr key={h.id} className="tr-hover">
-                      <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">{h.asset?.inventoryNumber}</td>
-                      <td className="td text-gray-600">{h.field}</td>
-                      <td className="td text-red-500 dark:text-red-400 line-through text-xs">{h.oldValue || "—"}</td>
-                      <td className="td text-green-600 dark:text-green-400 font-medium text-xs">{h.newValue || "—"}</td>
-                      <td className="td text-gray-500">{h.changedByName || "Система"}</td>
-                      <td className="td text-xs text-gray-400">{new Date(h.createdAt).toLocaleString("ru-RU")}</td>
+                      <td className={`td font-mono text-xs text-gray-500 dark:text-slate-400 ${OWNER_COL_HIDE[0]}`}>{h.asset?.inventoryNumber}</td>
+                      <td className={`td text-gray-600 ${OWNER_COL_HIDE[1]}`}>{h.field}</td>
+                      <td className={`td text-red-500 dark:text-red-400 line-through text-xs ${OWNER_COL_HIDE[2]}`}>{h.oldValue || "—"}</td>
+                      <td className={`td text-green-600 dark:text-green-400 font-medium text-xs ${OWNER_COL_HIDE[3]}`}>{h.newValue || "—"}</td>
+                      <td className={`td text-gray-500 ${OWNER_COL_HIDE[4]}`}>{h.changedByName || "Система"}</td>
+                      <td className={`td text-xs text-gray-400 ${OWNER_COL_HIDE[5]}`}>{new Date(h.createdAt).toLocaleString("ru-RU")}</td>
                     </tr>
                   ))}
                   {!ownerHistory?.length && (

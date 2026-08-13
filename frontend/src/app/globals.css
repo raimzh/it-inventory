@@ -114,6 +114,8 @@
 
 @utility sidebar-link {
   /* ── Sidebar ───────────────────────────────────────── */
+  /* coarse: пункты меню — тоже тап-цели на мобильной панели */
+  @apply coarse:py-3.5 coarse:text-base;
   @apply relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
       text-slate-500 dark:text-slate-400
       hover:bg-slate-100 dark:hover:bg-slate-800/70
@@ -247,11 +249,17 @@
 
 @utility th {
   /* ── Table ─────────────────────────────────────────── */
+  /* coarse: не до 16px — это подпись-заголовок в верхнем регистре,
+     крупнее выглядела бы странно, но строка должна быть выше под палец */
+  @apply coarse:py-4 coarse:text-[13px];
   @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
       text-gray-400 dark:text-slate-500;
 }
 
 @utility td {
+  /* coarse: это то, что реально читают и по чему тапают (клик по строке
+     часто ведёт на карточку) — 16px, как у input */
+  @apply coarse:py-4 coarse:text-base;
   @apply px-4 py-3.5 text-sm;
 }
 
