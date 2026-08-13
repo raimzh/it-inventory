@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Header } from "@/components/layout/Header";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/Button";
 import { useScanner, type DroppedScan, type ScanEvent } from "@/hooks/useScanner";
 import { feedback } from "@/lib/feedback";
@@ -8,10 +8,12 @@ import { parseScanCode } from "@/lib/scan-code";
 import { DEFAULT_SCAN_CONFIG } from "@/lib/scan-buffer";
 import { installScanSimulator, simulateScan, SCAN_PROFILES, type ScanProfile } from "@/lib/scan-sim";
 import { useScannerPrefs } from "@/store/scanner-prefs.store";
-import { ScanLine, Volume2, VolumeX, Vibrate, Play } from "lucide-react";
+import { ScanLine, Volume2, VolumeX, Vibrate, Play, Sun, Moon } from "lucide-react";
 
 /**
- * Отладка приёма сканов.
+ * Отладка приёма сканов — вне (dashboard): без логина и без сайдбара, чтобы
+ * открывать напрямую по короткому URL (/scan) на устройстве и не упираться
+ * в проверку сессии или кэш родительского каркаса.
  *
  * Существует ради вопросов, на которые нельзя ответить без живого железа:
  * приходят ли нажатия с нормальным `key` (а не через IME), какова реальная
@@ -38,6 +40,7 @@ interface LogEntry {
 }
 
 export default function ScanDebugPage() {
+  const { theme, setTheme } = useTheme();
   const [ready, setReady] = useState(false);
   const [audioOk, setAudioOk] = useState(false);
   const [rawKeys, setRawKeys] = useState<RawKey[]>([]);
@@ -107,8 +110,21 @@ export default function ScanDebugPage() {
   }, [log]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <Header title="Отладка сканера" />
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col">
+      <header className="sticky top-0 z-40 glass border-b border-gray-100 dark:border-slate-800 px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          <h1 className="flex-1 min-w-0 text-[17px] font-bold text-gray-900 dark:text-white tracking-tight truncate">
+            Отладка сканера
+          </h1>
+          <button
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-all"
+            title="Переключить тему"
+          >
+            {theme === "dark" ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+          </button>
+        </div>
+      </header>
 
       <div className="p-5 space-y-4 overflow-y-auto">
         {!ready ? (
