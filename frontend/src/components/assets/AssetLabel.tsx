@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { code128Svg } from "@/lib/code128";
+import { buildLabelPrintCss } from "@/lib/label-print";
 import { Printer, X } from "lucide-react";
 
 interface Props {
@@ -45,39 +46,13 @@ const LOGO_STRIP_MM = 8;
  */
 const LOGO_SRC = "/KTMS_LOGO_ORIGINAL.png";
 
+const PORTAL_ID = "asset-label-portal";
+
 const PRINT_CSS = `
   /* Штрихкод тянется на всю отведённую полосу: сам SVG задаёт размер
      в модулях, здесь он подгоняется под миллиметры */
   #asset-label svg { width: 100%; height: 100%; display: block; }
-
-  @media print {
-    @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }
-
-    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-
-    /* Именно display:none. visibility:hidden оставил бы страницу в потоке,
-       и печать растянулась бы на столько листов, сколько занимает карточка */
-    body > *:not(#asset-label-portal) { display: none !important; }
-
-    #asset-label-portal .no-print { display: none !important; }
-
-    /* Экранное оформление окна не должно смещать наклейку на листе.
-       translate сбрасывается отдельно от transform: Tailwind 4 центрирует
-       окно через самостоятельное свойство translate, и сброс transform
-       его не перекрывает — наклейка уезжала на пол-ширины влево */
-    #asset-label-portal .label-shell {
-      position: static !important;
-      transform: none !important;
-      translate: none !important;
-      left: auto !important;
-      top: auto !important;
-      margin: 0 !important;
-      box-shadow: none !important;
-      border-radius: 0 !important;
-    }
-    #asset-label-portal .label-pad { padding: 0 !important; }
-  }
-`;
+${buildLabelPrintCss({ portalId: PORTAL_ID, widthMm: LABEL_W_MM, heightMm: LABEL_H_MM })}`;
 
 export function AssetLabel({ asset, onClose }: Props) {
   // createPortal требует document, которого нет при серверном рендере.
@@ -96,7 +71,7 @@ export function AssetLabel({ asset, onClose }: Props) {
   if (!container) return null;
 
   return createPortal(
-    <div id="asset-label-portal">
+    <div id={PORTAL_ID}>
       <style>{PRINT_CSS}</style>
 
       <div className="no-print fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
