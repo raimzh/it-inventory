@@ -1,5 +1,6 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { code128Svg } from "@/lib/code128";
 import { Printer, X } from "lucide-react";
@@ -16,13 +17,20 @@ interface Props {
  * слева поле под логотип, справа сверху вниз — наименование,
  * крупный инвентарный номер, линейный штрихкод.
  *
- * Штрихкод, а не QR: сканеры уже настроены на линейный код с инвентарным
- * номером, и новые наклейки должны читаться так же, как старые. Код несёт
+ * Штрихкод, а не QR: сканеры уже читают линейный код с инвентарным
+ * номером со старых наклеек, и новые должны читаться так же. Код несёт
  * ровно инвентарный номер — parseScanCode разбирает его как `plain`,
  * а страницы ищут по нему в своём указателе.
  *
  * Размеры заданы в миллиметрах, а не классами Tailwind: печать должна
  * попадать в физическую этикетку 58×40 мм, а не масштабироваться по экрану.
+ *
+ * Разметка выносится порталом прямо в body. Это нужно ради печати:
+ * скрыть остальную страницу через `visibility: hidden` недостаточно —
+ * скрытые элементы остаются в потоке, и длинная карточка ОС нарезается
+ * на десяток страниц, из которых заполнена только первая. `display: none`
+ * убирает их из потока совсем, но применить его к соседям на каждом
+ * уровне вложенности можно, только когда наклейка — прямой ребёнок body.
  */
 
 /** Физический размер этикетки в рулоне */
@@ -31,35 +39,69 @@ const LABEL_H_MM = 40;
 /** Ширина поля под логотип слева */
 const LOGO_STRIP_MM = 8;
 /**
- * Логотип кладётся в `frontend/public/`. Файла может не быть — тогда
- * картинка скрывается по onError, и наклейка печатается без логотипа,
- * а не с крестом на месте битого изображения.
+ * Логотип лежит в `frontend/public/`. Если файла не окажется, картинка
+ * скрывается по onError и наклейка печатается без логотипа, а не с
+ * пустым местом на месте битого изображения.
  */
 const LOGO_SRC = "/KTMS_LOGO_ORIGINAL.png";
 
+const PRINT_CSS = `
+  /* Штрихкод тянется на всю отведённую полосу: сам SVG задаёт размер
+     в модулях, здесь он подгоняется под миллиметры */
+  #asset-label svg { width: 100%; height: 100%; display: block; }
+
+  @media print {
+    @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }
+
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+
+    /* Именно display:none. visibility:hidden оставил бы страницу в потоке,
+       и печать растянулась бы на столько листов, сколько занимает карточка */
+    body > *:not(#asset-label-portal) { display: none !important; }
+
+    #asset-label-portal .no-print { display: none !important; }
+
+    /* Экранное оформление окна не должно смещать наклейку на листе.
+       translate сбрасывается отдельно от transform: Tailwind 4 центрирует
+       окно через самостоятельное свойство translate, и сброс transform
+       его не перекрывает — наклейка уезжала на пол-ширины влево */
+    #asset-label-portal .label-shell {
+      position: static !important;
+      transform: none !important;
+      translate: none !important;
+      left: auto !important;
+      top: auto !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+    #asset-label-portal .label-pad { padding: 0 !important; }
+  }
+`;
+
 export function AssetLabel({ asset, onClose }: Props) {
+  // createPortal требует document, которого нет при серверном рендере.
+  // Ленивый инициализатор, а не эффект: наклейка монтируется по клику,
+  // так что дорисовывать её вторым рендером незачем
+  const [container] = useState<HTMLElement | null>(
+    () => (typeof document === "undefined" ? null : document.body),
+  );
+
   // Штрихкод не зависит от перерисовок — считаем один раз на номер
   const barcode = useMemo(
     () => code128Svg(asset.inventoryNumber, { height: 60 }),
     [asset.inventoryNumber],
   );
 
-  return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center overflow-auto p-4">
-      <style>{`
-        /* Штрихкод тянется на всю отведённую полосу: сам SVG задаёт
-           собственный размер в модулях, здесь он подгоняется под мм */
-        #asset-label svg { width: 100%; height: 100%; display: block; }
-        @media print {
-          body * { visibility: hidden !important; }
-          #asset-label, #asset-label * { visibility: visible !important; }
-          #asset-label { position: absolute; left: 0; top: 0; margin: 0; box-shadow: none; }
-          .no-print { display: none !important; }
-          @page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }
-        }
-      `}</style>
+  if (!container) return null;
 
-      <div className="bg-white text-black rounded-xl my-4 shadow-2xl">
+  return createPortal(
+    <div id="asset-label-portal">
+      <style>{PRINT_CSS}</style>
+
+      <div className="no-print fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
+
+      <div className="label-shell fixed z-[61] left-1/2 -translate-x-1/2 top-8 bg-white text-black rounded-xl shadow-2xl">
         <div className="no-print flex justify-between items-center px-5 py-3 border-b gap-4">
           <span className="font-semibold">Наклейка ОС</span>
           <div className="flex gap-2">
@@ -68,7 +110,7 @@ export function AssetLabel({ asset, onClose }: Props) {
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="label-pad p-4">
           <div
             id="asset-label"
             style={{
@@ -152,6 +194,7 @@ export function AssetLabel({ asset, onClose }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    container,
   );
 }
