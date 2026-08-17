@@ -56,7 +56,7 @@ export default function AssetDetailPage() {
   const { data: qrCode } = useQuery({
     queryKey: ["asset-qr", id],
     queryFn: () => assetsApi.getQrCode(id).then(r => r.data),
-    enabled: qrModal || printLabel,
+    enabled: qrModal,
   });
   const { data: depts } = useQuery<Department[]>({
     queryKey: ["departments"],
@@ -400,8 +400,8 @@ export default function AssetDetailPage() {
         </div>
       </Modal>
 
-      {printLabel && qrCode && (
-        <AssetLabel asset={asset} qr={qrCode} onClose={() => setPrintLabel(false)} />
+      {printLabel && (
+        <AssetLabel asset={asset} onClose={() => setPrintLabel(false)} />
       )}
     </div>
   );
