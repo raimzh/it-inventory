@@ -35,7 +35,7 @@ const LOGO_STRIP_MM = 8;
  * картинка скрывается по onError, и наклейка печатается без логотипа,
  * а не с крестом на месте битого изображения.
  */
-const LOGO_SRC = "/label-logo.svg";
+const LOGO_SRC = "/KTMS_LOGO_ORIGINAL.png";
 
 export function AssetLabel({ asset, onClose }: Props) {
   // Штрихкод не зависит от перерисовок — считаем один раз на номер
