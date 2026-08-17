@@ -11,7 +11,8 @@ import { Modal } from "@/components/ui/Modal";
 import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department, ASSET_CATEGORIES } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
 import { toast } from "@/store/toast.store";
-import { ArrowLeft, Pencil, QrCode, History, Paperclip, Calendar, Clock, Trash2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Pencil, QrCode, History, Paperclip, Calendar, Clock, Trash2, AlertCircle, Printer } from "lucide-react";
+import { AssetLabel } from "@/components/assets/AssetLabel";
 
 const STATUSES = Object.entries(ASSET_STATUS_LABELS) as [AssetStatus, string][];
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -36,6 +37,7 @@ export default function AssetDetailPage() {
   const { user } = useAuthStore();
   const [editModal, setEditModal] = useState(false);
   const [qrModal, setQrModal] = useState(false);
+  const [printLabel, setPrintLabel] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Asset>>({});
 
@@ -54,7 +56,7 @@ export default function AssetDetailPage() {
   const { data: qrCode } = useQuery({
     queryKey: ["asset-qr", id],
     queryFn: () => assetsApi.getQrCode(id).then(r => r.data),
-    enabled: qrModal,
+    enabled: qrModal || printLabel,
   });
   const { data: depts } = useQuery<Department[]>({
     queryKey: ["departments"],
@@ -160,6 +162,9 @@ export default function AssetDetailPage() {
         )}
         <Button variant="secondary" size="sm" icon={<QrCode className="w-3.5 h-3.5" />} onClick={() => setQrModal(true)}>
           QR-код
+        </Button>
+        <Button variant="secondary" size="sm" icon={<Printer className="w-3.5 h-3.5" />} onClick={() => setPrintLabel(true)}>
+          Печать наклейки
         </Button>
         {canDelete && (
           <Button variant="danger" size="sm" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => setDeleteModal(true)}>
@@ -394,6 +399,10 @@ export default function AssetDetailPage() {
           )}
         </div>
       </Modal>
+
+      {printLabel && qrCode && (
+        <AssetLabel asset={asset} qr={qrCode} onClose={() => setPrintLabel(false)} />
+      )}
     </div>
   );
 }
