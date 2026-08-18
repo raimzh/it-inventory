@@ -10,7 +10,7 @@ import { InventorySession, InventoryItem, ASSET_STATUS_LABELS, AssetStatus } fro
 import { useAuthStore } from "@/store/auth.store";
 import { useScanner } from "@/hooks/useScanner";
 import { feedback } from "@/lib/feedback";
-import { parseScanCode } from "@/lib/scan-code";
+import { parseScanCode, stripLeadingZeros } from "@/lib/scan-code";
 import { useScannerPrefs } from "@/store/scanner-prefs.store";
 import {
   Plus, ScanLine, CheckCircle2, XCircle, ClipboardList, Lock, AlertTriangle,
@@ -120,7 +120,15 @@ export default function InventoryPage() {
     const map = new Map<string, InventoryItem>();
     for (const item of items) {
       if (item.assetId) map.set(item.assetId, item);
-      if (item.asset?.inventoryNumber) map.set(norm(item.asset.inventoryNumber), item);
+      if (item.asset?.inventoryNumber) {
+        const key = norm(item.asset.inventoryNumber);
+        map.set(key, item);
+        // Часть наклеек напечатана с дополнением номера нулями до девяти
+        // знаков (000009079), а в учёте он лежит как 9079. Регистрируем
+        // ключ и без нулей, чтобы такие этикетки находились
+        const bare = stripLeadingZeros(key);
+        if (bare !== key) map.set(bare, item);
+      }
       if (item.asset?.serialNumber) map.set(norm(item.asset.serialNumber), item);
     }
     return map;
@@ -188,7 +196,11 @@ export default function InventoryPage() {
   const handleCode = useCallback((raw: string) => {
     if (!scanReady || !activeSession) return;
     const parsed = parseScanCode(raw);
-    const found = (parsed.id ? index.get(parsed.id) : undefined) ?? index.get(norm(parsed.key));
+    const key = norm(parsed.key);
+    const found = (parsed.id ? index.get(parsed.id) : undefined)
+      ?? index.get(key)
+      // Запасной вариант для старых наклеек с номером, дополненным нулями
+      ?? index.get(stripLeadingZeros(key));
 
     if (!found) {
       feedback.error();

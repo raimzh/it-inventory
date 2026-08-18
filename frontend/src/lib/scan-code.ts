@@ -29,6 +29,22 @@ function build(kind: ScanKind, key: string, rawId: string | undefined, raw: stri
   return { kind, key: key.trim(), id, raw };
 }
 
+/**
+ * Убирает ведущие нули у чисто цифрового номера.
+ *
+ * Часть наклеек на технике напечатана с дополнением номера нулями до
+ * девяти знаков (`000009079`), тогда как в учёте тот же объект хранится
+ * как `9079`. Сканер такую этикетку читает нормально — не совпадала
+ * именно строка, поэтому «некоторые наклейки не считывались».
+ *
+ * Номера с разделителем (`00-001188`) не трогаем: там ведущие нули —
+ * часть формата, а не дополнение. По этой же причине нормализация не
+ * применяется к штрихкодам товаров: в EAN/UPC ведущий ноль значащий.
+ */
+export function stripLeadingZeros(value: string): string {
+  return /^\d+$/.test(value) ? value.replace(/^0+(?=\d)/, '') : value;
+}
+
 export function parseScanCode(input: string): ParsedScan {
   const raw = (input ?? '').trim();
 
