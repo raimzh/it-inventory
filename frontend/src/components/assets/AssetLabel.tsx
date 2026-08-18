@@ -34,11 +34,17 @@ interface Props {
  * уровне вложенности можно, только когда наклейка — прямой ребёнок body.
  */
 
-/** Физический размер этикетки в рулоне */
-const LABEL_W_MM = 58;
-const LABEL_H_MM = 40;
+/** Физический размер этикетки в рулоне (замерен по факту) */
+const LABEL_W_MM = 57;
+const LABEL_H_MM = 39;
+/**
+ * Отступ от края. Термопринтер не печатает у самого края, и попадание
+ * в край всё равно теряется — лучше отдать миллиметр сразу, чем
+ * обрезать штрихкод.
+ */
+const PAD_MM = 1.2;
 /** Ширина поля под логотип слева */
-const LOGO_STRIP_MM = 8;
+const LOGO_STRIP_MM = 7;
 /**
  * Логотип лежит в `frontend/public/`. Если файла не окажется, картинка
  * скрывается по onError и наклейка печатается без логотипа, а не с
@@ -95,8 +101,12 @@ export function AssetLabel({ asset, onClose }: Props) {
               alignItems: "stretch",
               background: "#fff",
               color: "#000",
-              padding: "1.5mm",
+              padding: `${PAD_MM}mm`,
               boxSizing: "border-box",
+              // overflow скрыт намеренно: если наименование окажется длиннее
+              // расчётного, лучше обрезать его, чем вытолкнуть штрихкод
+              // за край этикетки
+              overflow: "hidden",
               fontFamily: "Arial, Helvetica, sans-serif",
             }}
           >

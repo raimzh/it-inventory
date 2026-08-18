@@ -25,9 +25,11 @@ interface Props {
  * почему именно так, описано в lib/label-print.
  */
 
-/** Физический размер этикетки в рулоне */
-const LABEL_W_MM = 58;
-const LABEL_H_MM = 40;
+/** Физический размер этикетки в рулоне (замерен по факту) */
+const LABEL_W_MM = 57;
+const LABEL_H_MM = 39;
+/** Термопринтер не печатает у самого края — миллиметр отдаём сразу */
+const PAD_MM = 1.2;
 const PORTAL_ID = "item-label-portal";
 
 const PRINT_CSS = buildLabelPrintCss({
@@ -68,11 +70,13 @@ export function ItemLabel({ item, qr, onClose }: Props) {
               height: `${LABEL_H_MM}mm`,
               display: "flex",
               alignItems: "center",
-              gap: "2mm",
+              gap: "1.5mm",
               background: "#fff",
               color: "#000",
-              padding: "2mm",
+              padding: `${PAD_MM}mm`,
               boxSizing: "border-box",
+              // Длинное наименование лучше обрезать, чем вытолкнуть QR за край
+              overflow: "hidden",
               fontFamily: "Arial, Helvetica, sans-serif",
             }}
           >
@@ -81,7 +85,7 @@ export function ItemLabel({ item, qr, onClose }: Props) {
             <img
               src={qr}
               alt={`QR-код позиции ${item.sku}`}
-              style={{ width: "28mm", height: "28mm", flexShrink: 0 }}
+              style={{ width: "26mm", height: "26mm", flexShrink: 0 }}
             />
 
             <div style={{ minWidth: 0, flex: 1 }}>
