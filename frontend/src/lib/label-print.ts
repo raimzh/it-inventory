@@ -24,9 +24,15 @@ interface LabelPrintOptions {
   portalId: string;
   widthMm: number;
   heightMm: number;
+  /**
+   * Дополнительные правила внутрь того же `@media print`. Второй блок
+   * рядом заводить нельзя: правила печати должны читаться и проверяться
+   * как одно целое, иначе легко упустить половину.
+   */
+  extraRules?: string;
 }
 
-export function buildLabelPrintCss({ portalId, widthMm, heightMm }: LabelPrintOptions): string {
+export function buildLabelPrintCss({ portalId, widthMm, heightMm, extraRules = '' }: LabelPrintOptions): string {
   return `
   @media print {
     @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
@@ -49,7 +55,8 @@ export function buildLabelPrintCss({ portalId, widthMm, heightMm }: LabelPrintOp
       box-shadow: none !important;
       border-radius: 0 !important;
     }
-    #${portalId} .label-pad { padding: 0 !important; }
+    #${portalId} .label-pad { padding: 0 !important; display: block !important; }
+${extraRules}
   }
 `;
 }
