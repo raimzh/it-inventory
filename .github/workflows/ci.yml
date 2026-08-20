@@ -133,6 +133,10 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:users
 
+      - name: Разбор дат и колонок при импорте
+        working-directory: backend
+        run: npm run test:import
+
       - name: Остановка приложения
         if: always()
         working-directory: backend

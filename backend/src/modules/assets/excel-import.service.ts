@@ -6,6 +6,7 @@ import { Asset, AssetStatus } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
 import { ImportLog } from './entities/import-log.entity';
 import { AssetsService } from './assets.service';
+import { parseDateCell } from '../../common/excel/parse-date-cell';
 
 // ─── Column mapping (Excel header → entity field) ────────────────────────────
 const COLUMN_MAP: Record<string, keyof Asset | string> = {
@@ -24,6 +25,17 @@ const COLUMN_MAP: Record<string, keyof Asset | string> = {
   'Производитель':         'manufacturer',
   'Модель':                'model',
   'Примечание':            'comment',
+
+  // Заголовки выгрузки. Экспорт и импорт исторически называли одни и те же
+  // колонки по-разному, и файл, выгруженный из системы и залитый обратно,
+  // молча терял остаточную стоимость, местоположение, владельца и
+  // комментарий: колонки просто не совпадали по имени, а неизвестные
+  // заголовки импорт пропускает без предупреждения.
+  'Местоположение':        'location',
+  'Владелец':              'ownerName',
+  'Остаточная стоимость':  'residualValue',
+  'Первоначальная стоимость': 'initialValue',
+  'Комментарий':           'comment',
 };
 
 const REQUIRED_COLS = ['Инв. номер', 'Наименование'];
@@ -132,7 +144,7 @@ export class ExcelImportService {
       ['Местонахождение', 'Нет', 'Фактическое местонахождение'],
       ['Ответственный', 'Нет', 'ФИО ответственного лица'],
       ['МОЛ', 'Нет', 'Материально-ответственное лицо'],
-      ['Дата ввода', 'Нет', 'Дата ввода в эксплуатацию (ГГГГ-ММ-ДД)'],
+      ['Дата ввода', 'Нет', 'Дата ввода в эксплуатацию (ГГГГ-ММ-ДД или ДД.ММ.ГГГГ)'],
       ['Первонач. стоимость', 'Нет', 'Первоначальная стоимость в рублях'],
       ['Остат. стоимость', 'Нет', 'Остаточная стоимость в рублях'],
       ['Статус', 'Нет', 'В наличии / Не найдено / Передан / Ремонт / Списан'],
@@ -219,13 +231,7 @@ export class ExcelImportService {
       let val: any = raw_val;
 
       if (entityField === 'commissioningDate' || entityField === 'decommissionDate') {
-        if (val instanceof Date) {
-          dto[entityField] = val.toISOString().split('T')[0];
-        } else {
-          const str = String(val).trim();
-          const parsed = new Date(str);
-          dto[entityField] = isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
-        }
+        dto[entityField] = parseDateCell(val);
         continue;
       }
 
