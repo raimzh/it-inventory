@@ -184,6 +184,19 @@ jobs:
           BUILD_STANDALONE: 'true'
         run: npm run build
 
+      # Тесты идут последними и на своей версии Node: они требуют исходники
+      # на TypeScript напрямую, а снимать с них типы Node умеет с 22-й.
+      # Сборки выше остаются на версии из образов — их результат едет в прод,
+      # а эти файлы в рантайме не исполняются, там работает сборка Next.js.
+      - name: Node для тестов
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Тесты фронтенда
+        working-directory: frontend
+        run: npm run test
+
   docker:
     name: Сборка образов
     runs-on: ubuntu-latest

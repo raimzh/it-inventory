@@ -19,7 +19,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseDateCell } = require('../src/common/excel/parse-date-cell.ts');
+// Берём собранный dist, а не .ts: в CI Node 20, а снимать типы с исходника
+// умеет только Node 22+. Тот же приём в scan.parse.test.js
+const { parseDateCell } = require('../dist/common/excel/parse-date-cell');
 
 test('дата: ДД.ММ.ГГГГ разбирается как день-месяц-год', () => {
   assert.equal(parseDateCell('20.06.2023'), '2023-06-20');
