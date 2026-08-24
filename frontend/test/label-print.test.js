@@ -36,6 +36,11 @@ const SINGLE = `
       margin: 0 !important;
       box-shadow: none !important;
       border-radius: 0 !important;
+      /* Снять ограничение высоты и прокрутку — см. пункт 4 в описании */
+      max-height: none !important;
+      height: auto !important;
+      overflow: visible !important;
+      width: auto !important;
     }
     #p .label-pad { padding: 0 !important; display: block !important; }
 
@@ -50,6 +55,16 @@ test('одиночная печать: правил разрывов нет во
   const css = buildLabelPrintCss({ portalId: 'p', widthMm: 57, heightMm: 39 });
   assert.ok(!css.includes('break-after'), 'разрывы не должны попадать в одиночную печать');
   assert.ok(!css.includes('label-grid'));
+});
+
+test('окно предпросмотра не обрезает содержимое при печати', () => {
+  // Пачка из шести наклеек печаталась одной: остальные оставались
+  // «ниже прокрутки» окна с max-height и overflow-auto, а содержимое
+  // контейнера с прокруткой уходит на печать только видимой частью
+  const css = buildLabelPrintCss({ portalId: 'p', widthMm: 57, heightMm: 39 });
+  const shell = css.slice(css.indexOf('.label-shell'), css.indexOf('.label-pad'));
+  assert.match(shell, /max-height: none !important;/);
+  assert.match(shell, /overflow: visible !important;/);
 });
 
 test('пачка: каждая наклейка уходит на свою страницу', () => {

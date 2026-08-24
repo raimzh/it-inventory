@@ -21,6 +21,11 @@
  *    grid-контейнера Chrome местами игнорирует и клеит наклейки на одну
  *    страницу.
  *
+ * 4. У окна предпросмотра снимаются `max-height` и `overflow`. Содержимое
+ *    контейнера с прокруткой печатается только видимой частью: пачка из
+ *    шести наклеек выводила одну, остальные оставались «ниже прокрутки».
+ *    На одной наклейке дефект не проявлялся — она помещалась целиком.
+ *
  * Применить `display: none` к соседям на каждом уровне вложенности
  * нельзя, поэтому наклейка выносится порталом прямо в body: тогда
  * достаточно одного правила `body > *:not(#id)`.
@@ -85,6 +90,11 @@ export function buildLabelPrintCss(
       margin: 0 !important;
       box-shadow: none !important;
       border-radius: 0 !important;
+      /* Снять ограничение высоты и прокрутку — см. пункт 4 в описании */
+      max-height: none !important;
+      height: auto !important;
+      overflow: visible !important;
+      width: auto !important;
     }
     #${portalId} .label-pad { padding: 0 !important; display: block !important; }${batchRules}
 ${extraRules}
