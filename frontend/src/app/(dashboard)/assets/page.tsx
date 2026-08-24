@@ -8,12 +8,14 @@ import { AssetStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import ExcelImportModal from "@/components/assets/ExcelImportModal";
+import { BulkLabelDialog } from "@/components/assets/BulkLabelDialog";
+import { AssetLabelBatch } from "@/components/assets/AssetLabelBatch";
 import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department, ASSET_CATEGORIES } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
 import { useDebounce } from "@/hooks/useDebounce";
 import { toast } from "@/store/toast.store";
 import {
-  Download, Plus, Search, X, ChevronLeft, ChevronRight, Upload, FileSpreadsheet,
+  Download, Plus, Search, X, ChevronLeft, ChevronRight, Upload, FileSpreadsheet, Printer,
 } from "lucide-react";
 
 const STATUSES = Object.entries(ASSET_STATUS_LABELS) as [AssetStatus, string][];
@@ -33,6 +35,9 @@ export default function AssetsPage() {
   const [bulkStatus, setBulkStatus] = useState<AssetStatus>("active");
   const [exportLoading, setExportLoading] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [labelsDialog, setLabelsDialog] = useState(false);
+  // Пачка, готовая к печати: набор ОС и с какого номера начали
+  const [batch, setBatch] = useState<{ assets: Asset[]; startNo: number; totalNo: number } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["assets", debouncedSearch, statusFilter, deptFilter, catFilter, page],
@@ -86,6 +91,15 @@ export default function AssetsPage() {
   const canImport = user && ["admin", "accountant"].includes(user.role);
   const hasFilters = !!(search || statusFilter || deptFilter || catFilter);
 
+  // Расшифровка отбора для диалога печати: печатать «всё по фильтру»,
+  // не видя, какой он, — верный способ извести ленту впустую
+  const filtersLabel = [
+    search && `поиск «${search}»`,
+    statusFilter && `статус «${ASSET_STATUS_LABELS[statusFilter as AssetStatus]}»`,
+    deptFilter && `подразделение «${depts?.find(d => d.id === deptFilter)?.name ?? "—"}»`,
+    catFilter && `категория «${catFilter}»`,
+  ].filter(Boolean).join(", ") || null;
+
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="Основные средства">
@@ -94,6 +108,16 @@ export default function AssetsPage() {
             Изменить статус ({selected.length})
           </Button>
         )}
+
+        {/* Печать наклеек — по отмеченным строкам либо по всему отбору.
+            Без гейта по роли: одиночная печать на карточке ОС тоже открыта всем */}
+        <Button
+          variant="secondary" size="sm"
+          onClick={() => setLabelsDialog(true)}
+          icon={<Printer className="w-3.5 h-3.5" />}
+        >
+          Наклейки{selected.length > 0 ? ` (${selected.length})` : ""}
+        </Button>
 
         {/* Excel export */}
         <Button
@@ -339,6 +363,32 @@ export default function AssetsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Печать наклеек: сначала выбор набора, затем предпросмотр.
+          Выбор строк после печати не сбрасываем — допечатка второй
+          попыткой и есть смысл всей этой кнопки */}
+      {labelsDialog && (
+        <BulkLabelDialog
+          selectedIds={selected}
+          filters={{ search: debouncedSearch, status: statusFilter, departmentId: deptFilter, category: catFilter }}
+          totalByFilters={data?.total ?? 0}
+          filtersLabel={filtersLabel}
+          onClose={() => setLabelsDialog(false)}
+          onReady={(assets, startNo, totalNo) => {
+            setLabelsDialog(false);
+            setBatch({ assets, startNo, totalNo });
+          }}
+        />
+      )}
+
+      {batch && (
+        <AssetLabelBatch
+          assets={batch.assets}
+          startNo={batch.startNo}
+          totalNo={batch.totalNo}
+          onClose={() => setBatch(null)}
+        />
+      )}
 
       {/* Excel Import Modal */}
       {showImport && (
