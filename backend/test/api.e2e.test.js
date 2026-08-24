@@ -12,6 +12,11 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { assertNotProductionDb } = require('./guard-test-db');
+
+// Тест пишет в базу — против боевой не запускаем
+assertNotProductionDb();
+
 const BASE = process.env.BASE_URL || 'http://localhost:3009';
 const ADMIN = { username: process.env.ADMIN_USERNAME || 'r.zhuman', password: process.env.ADMIN_PASSWORD };
 

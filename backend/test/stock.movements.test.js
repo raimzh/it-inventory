@@ -10,6 +10,11 @@
 const { test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { assertNotProductionDb } = require('./guard-test-db');
+
+// Тест пишет в базу — против боевой не запускаем
+assertNotProductionDb();
+
 const { AppDataSource } = require('../dist/data-source.js');
 const { StockService } = require('../dist/modules/warehouse/stock.service.js');
 
