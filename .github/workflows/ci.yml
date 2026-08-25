@@ -68,6 +68,10 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Линт
+        working-directory: backend
+        run: npm run lint
+
       - name: Сборка
         working-directory: backend
         run: npm run build

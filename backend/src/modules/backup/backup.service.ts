@@ -1,6 +1,4 @@
 ﻿import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { execFile } from 'child_process';
@@ -15,7 +13,7 @@ const execFileAsync = promisify(execFile);
 
 /** Имя файла резервной копии, которое создаёт этот сервис. */
 // .enc — зашифрованная копия (см. encryptIfConfigured)
-const BACKUP_FILENAME_RE = /^backup-[0-9T:.\-]+\.sql(\.enc)?$/;
+const BACKUP_FILENAME_RE = /^backup-[0-9T:.-]+\.sql(\.enc)?$/;
 const isBackupFile = (f: string) => BACKUP_FILENAME_RE.test(f);
 
 export interface BackupRecord {
@@ -35,7 +33,7 @@ export class BackupService {
     await this.createBackup(undefined, 'auto');
   }
 
-  async createBackup(userId?: string, type = 'manual'): Promise<{ filename: string; size: number }> {
+  async createBackup(userId?: string, _type = 'manual'): Promise<{ filename: string; size: number }> {
     const backupDir = this.config.get('BACKUP_DIR', '/app/backups');
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 

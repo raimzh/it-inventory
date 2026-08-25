@@ -45,7 +45,10 @@ export class ReportsService {
     return qb.orderBy('h.createdAt', 'DESC').getMany();
   }
 
-  async exportAssetsExcel(filters?: any): Promise<Buffer> {
+  // Выгружает все ОС. Параметр фильтров здесь когда-то был, но никогда не
+  // применялся и никем не передавался — убран, чтобы подпись не обещала
+  // того, чего метод не делает
+  async exportAssetsExcel(): Promise<Buffer> {
     const assets = await this.assetRepo.find({
       relations: { department: true, owner: true },
       order: { inventoryNumber: 'ASC' },

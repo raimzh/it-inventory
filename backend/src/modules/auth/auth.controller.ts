@@ -1,5 +1,4 @@
-﻿import { Controller, Post, Get, Body, UseGuards, Request, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+﻿import { Controller, Post, Get, Body, UseGuards, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IdentityThrottlerGuard } from '../../common/throttler/identity-throttler.guard';

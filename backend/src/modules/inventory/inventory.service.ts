@@ -118,8 +118,12 @@ export class InventoryService {
     return this.checkItem(sessionId, asset.id, dto, userId, userName);
   }
 
-  async closeSession(id: string, userId: string) {
-    const session = await this.getSession(id);
+  // userId принимается, но кто закрыл сессию, нигде не сохраняется —
+  // в сущности нет соответствующего поля. Оставлен в сигнатуре, чтобы не
+  // трогать вызывающий код; завести поле стоит отдельной задачей
+  async closeSession(id: string, _userId: string) {
+    // Вызов ради проверки: getSession бросит, если сессии нет
+    await this.getSession(id);
     await this.sessionRepo.update(id, { status: SessionStatus.CLOSED, endDate: new Date() });
     return this.getSession(id);
   }

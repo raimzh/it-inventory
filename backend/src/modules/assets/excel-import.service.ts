@@ -228,7 +228,7 @@ export class ExcelImportService {
       const raw_val = raw[excelCol];
       if (raw_val === null || raw_val === undefined || raw_val === '') continue;
 
-      let val: any = raw_val;
+      const val: any = raw_val;
 
       if (entityField === 'commissioningDate' || entityField === 'decommissionDate') {
         dto[entityField] = parseDateCell(val);
@@ -255,7 +255,7 @@ export class ExcelImportService {
 
   // ─── Preview ──────────────────────────────────────────────────────────────
   async preview(buffer: Buffer): Promise<PreviewResult> {
-    const { headers, rows } = await this.parseSheet(buffer);
+    const { rows } = await this.parseSheet(buffer);
 
     // Fetch all existing inventory numbers in one query
     const existingAssets = await this.assetRepo.find({ select: { inventoryNumber: true, id: true } });

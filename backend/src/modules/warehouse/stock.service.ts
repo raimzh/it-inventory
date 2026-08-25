@@ -3,7 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { Item } from './entities/item.entity';
 import { StockUnit } from './entities/stock-unit.entity';
-import { StockMovement, MovementType } from './entities/stock-movement.entity';
+import { StockMovement } from './entities/stock-movement.entity';
 import { parseScanCode } from '../../common/scan/parse-scan-code';
 
 // ── Формы входных данных (валидируемые DTO — на уровне контроллеров) ─────────

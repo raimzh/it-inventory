@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
-  UseGuards, UseInterceptors, UploadedFile, Res, StreamableFile, BadRequestException,
+  UseGuards, UseInterceptors, UploadedFile, Res, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
@@ -26,10 +26,16 @@ const EXCEL_MIME = [
 ];
 // BadRequestException, а не обычный Error: иначе отказ доходит до клиента
 // как «внутренняя ошибка сервера» вместо внятного объяснения.
-const excelFileFilter = (_req: any, file: Express.Multer.File, cb: Function) => {
+// Подпись задана NestJS (MulterOptions.fileFilter), а не multer: у multer
+// свой FileFilterCallback с необязательным вторым аргументом, и типы
+// не сходятся
+type MulterFileFilterCb = (error: Error | null, acceptFile: boolean) => void;
+
+const excelFileFilter = (_req: unknown, file: Express.Multer.File, cb: MulterFileFilterCb) => {
   const ok = EXCEL_MIME.includes(file.mimetype) ||
     ['.xlsx', '.xls'].includes(extname(file.originalname).toLowerCase());
-  ok ? cb(null, true) : cb(new BadRequestException('Разрешены только файлы .xlsx и .xls'), false);
+  if (ok) cb(null, true);
+  else cb(new BadRequestException('Разрешены только файлы .xlsx и .xls'), false);
 };
 
 // Вложения к карточке ОС: фотографии и документы. Список закрытый —
@@ -43,13 +49,11 @@ const ATTACHMENT_MIME = [
   ...EXCEL_MIME,
 ];
 const ATTACHMENT_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx'];
-const attachmentFileFilter = (_req: any, file: Express.Multer.File, cb: Function) => {
+const attachmentFileFilter = (_req: unknown, file: Express.Multer.File, cb: MulterFileFilterCb) => {
   const ok = ATTACHMENT_MIME.includes(file.mimetype)
     && ATTACHMENT_EXT.includes(extname(file.originalname).toLowerCase());
-  ok ? cb(null, true) : cb(
-    new BadRequestException('Допустимы только изображения и документы (jpg, png, webp, gif, pdf, doc, xls)'),
-    false,
-  );
+  if (ok) cb(null, true);
+  else cb(new BadRequestException('Допустимы только изображения и документы (jpg, png, webp, gif, pdf, doc, xls)'), false);
 };
 
 @ApiTags('assets')

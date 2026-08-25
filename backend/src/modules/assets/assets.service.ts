@@ -4,7 +4,7 @@ import { Repository, In, DataSource } from 'typeorm';
 import * as QRCode from 'qrcode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Asset, AssetStatus } from './entities/asset.entity';
+import { Asset } from './entities/asset.entity';
 import { AssetHistory } from './entities/asset-history.entity';
 import { AssetFile } from './entities/asset-file.entity';
 import { Department } from '../departments/entities/department.entity';

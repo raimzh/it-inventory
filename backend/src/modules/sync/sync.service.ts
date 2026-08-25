@@ -110,7 +110,7 @@ export class SyncService {
     return data.value || [];
   }
 
-  private async processAssets(assets: OneCAsset[], logId: string) {
+  private async processAssets(assets: OneCAsset[], _logId: string) {
     let created = 0, updated = 0, skipped = 0;
     const errors: any[] = [];
 
