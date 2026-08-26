@@ -11,6 +11,7 @@
     "test:e2e": "node --test test/api.e2e.test.js",
     "test:scan": "node --test test/scan.parse.test.js test/scan.lookup.test.js",
     "test:users": "node --test test/users.remove.test.js",
+    "test:users-fallback": "node --test test/users.remove.fallback.test.js",
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",

@@ -120,8 +120,24 @@ export class UsersService {
       return { deleted: false, references };
     }
 
-    await this.repo.delete(id);
-    return { deleted: true };
+    try {
+      await this.repo.delete(id);
+      return { deleted: true };
+    } catch (err) {
+      // 23503 — нарушение внешнего ключа. Между проверкой выше и удалением
+      // след мог появиться: журнал действий пишется вне транзакции запроса,
+      // и запись о выходе пользователя успевает лечь именно сюда. Ловили в
+      // CI как случайный 500 на удалении.
+      //
+      // Тот же путь спасает и от следа, которого проверка не видит: она
+      // обходит внешние ключи на users, но ссылка может прийти из таблицы
+      // без ограничения. Отдать 500 на штатное действие хуже, чем
+      // деактивировать.
+      if ((err as { code?: string })?.code !== '23503') throw err;
+
+      await this.repo.update(id, { isActive: false });
+      return { deleted: false, references: await this.userReferences(id) };
+    }
   }
 
   async getStats() {
