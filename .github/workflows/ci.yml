@@ -184,6 +184,11 @@ jobs:
         working-directory: backend
         run: npm run test:import
 
+      # Терминатор TLS лежит в корне и зависимостей не имеет, поэтому
+      # прогоняется здесь же, без отдельной установки
+      - name: Заголовки TLS-терминатора
+        run: node --test test/tls-proxy.test.js
+
       - name: Остановка приложения
         if: always()
         working-directory: backend
