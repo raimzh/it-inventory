@@ -154,11 +154,21 @@ test('дата ввода принимается и в ISO, и в формате
   assert.match((await getAsset(ru.id)).commissioningDate ?? '', /^2023-06-20/, 'ДД.ММ.ГГГГ должен разбираться как день-месяц-год');
 });
 
-test('новая запись создаётся, а её отсутствующее наименование заменяется номером', async () => {
-  // На создании запасное значение уместно: затирать нечего, а поле обязательное
+test('новая запись без Ref_Key не переписывает чужую карточку', async () => {
+  // Поиск по идентификатору 1С при отсутствующем Ref_Key вырождался в
+  // пустое условие: TypeORM отбрасывает undefined из where, и findOne
+  // возвращал первую попавшуюся запись. Новая позиция уходила в ветку
+  // обновления и переписывала собой чужую ОС вместе с её номером
+  const свидетель = await makeAsset();
   const inv = `SYNC-NEW-${uniq()}`;
+
   const stats = await importRecords([{ Code: inv }]);
-  assert.equal(stats.recordsCreated, 1);
+  assert.equal(stats.recordsCreated, 1, 'позиция без Ref_Key должна создаваться, а не обновлять чужую');
+  assert.equal(stats.recordsUpdated, 0);
+
+  const после = await getAsset(свидетель.id);
+  assert.equal(после.inventoryNumber, свидетель.inventoryNumber, 'посторонняя ОС не должна менять номер');
+  assert.equal(после.name, 'Исходное наименование', 'посторонняя ОС не должна менять наименование');
 
   const found = await req(`/assets?search=${inv}`, { token: ctx.adminToken });
   const asset = found.body.data.find(a => a.inventoryNumber === inv);

@@ -120,8 +120,14 @@ export class SyncService {
         const invNumber = raw.Code || raw['ИнвентарныйНомер'] || '';
         if (!invNumber) { skipped++; continue; }
 
+        // Поиск по идентификатору 1С — только когда он действительно есть.
+        // При отсутствующем Ref_Key условие вырождалось в пустое, TypeORM
+        // отбрасывает undefined из where, и findOne возвращал первую
+        // попавшуюся запись. Новая позиция из выгрузки уходила в ветку
+        // обновления и переписывала собой чужую карточку — вместе с её
+        // инвентарным номером.
         const existing = await this.assetRepo.findOne({ where: { inventoryNumber: invNumber } })
-          || await this.assetRepo.findOne({ where: { oneCGuid: raw.Ref_Key } });
+          ?? (raw.Ref_Key ? await this.assetRepo.findOne({ where: { oneCGuid: raw.Ref_Key } }) : null);
 
         // Поля, которых в выгрузке нет, остаются undefined: TypeORM не
         // включает их в UPDATE, и прежнее значение сохраняется. Раньше
