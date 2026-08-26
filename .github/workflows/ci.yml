@@ -58,6 +58,9 @@ jobs:
       # администратором, шесть — в боевые 5 в минуту они не укладываются.
       # Перебора паролей в CI не бывает, поэтому предел здесь снят
       LOGIN_THROTTLE_LIMIT: '1000'
+      # По умолчанию каталог копий — /app/backups (путь из образа), на
+      # раннере он недоступен на запись
+      BACKUP_DIR: backups
 
     steps:
       - uses: actions/checkout@v4
@@ -134,6 +137,18 @@ jobs:
         env:
           BASE_URL: http://localhost:3009
         run: npm run test:auth
+
+      # pg_dump на раннере есть, но версия клиента должна совпадать с
+      # сервером: иначе он откажется работать, а в тесте это выглядело бы
+      # как невнятный отказ создания копии
+      - name: Версия pg_dump
+        run: pg_dump --version && psql --version
+
+      - name: Резервные копии
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:backup
 
       - name: Ход инвентаризации
         working-directory: backend
