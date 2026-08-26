@@ -125,6 +125,12 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:e2e
 
+      - name: Вход, обновление и отзыв токенов
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:auth
+
       - name: Разбор этикеток и поиск по коду
         working-directory: backend
         env:

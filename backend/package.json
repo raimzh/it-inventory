@@ -14,7 +14,8 @@
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",
-    "test:import": "node --test test/excel-import.test.js"
+    "test:import": "node --test test/excel-import.test.js",
+    "test:auth": "node --test test/auth.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",
