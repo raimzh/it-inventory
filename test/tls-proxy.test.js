@@ -20,6 +20,7 @@ const assert = require('node:assert/strict');
 
 const {
   forwardHeaders, httpsLocation, createHandshakeReporter, explainHandshakeFailure,
+  formatTimestamp, logLine,
 } = require('../scripts/tls-proxy.js');
 
 test('фронтенду сообщается, что снаружи было шифрование', () => {
@@ -192,4 +193,44 @@ test('истёкший сертификат подсказывает перев�
 
 test('незнакомый код не выдумывает объяснение', () => {
   assert.equal(explainHandshakeFailure('ERR_WHATEVER_NEW'), '');
+});
+
+// --- Отметка времени ------------------------------------------------------
+//
+// PM2 времени не проставляет. Без отметки запись об отказе бесполезна:
+// непонятно, относится ли она к сегодняшней попытке или лежит с прошлой
+// недели. Ровно на это уже наступили при разборе первого отказа с планшета.
+
+const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:\d{2}$/;
+
+test('отметка времени имеет разбираемый вид со смещением', () => {
+  assert.match(formatTimestamp(new Date()), TIMESTAMP_RE);
+});
+
+test('отметка показывает местное время, а не UTC', () => {
+  // Смещение обязано присутствовать явно: разница в пять часов между
+  // UTC и местным временем незаметно уводит расследование не туда
+  const stamp = formatTimestamp(new Date('2026-08-26T06:42:13Z'));
+  assert.match(stamp, TIMESTAMP_RE);
+  assert.match(stamp, /^2026-08-26 /);
+
+  // Час зависит от пояса машины, поэтому сверяем со смещением из самой
+  // отметки, а не с жёстким значением — иначе тест зелёный локально и
+  // красный в CI, где UTC
+  const offsetHours = Number(stamp.slice(-6, -3));
+  const expected = (6 + offsetHours + 24) % 24;
+  assert.equal(Number(stamp.slice(11, 13)), expected);
+});
+
+test('запись об отказе начинается с отметки времени', () => {
+  const line = logLine('рукопожатие не состоялось: 10.5.10.28, ERR_SSL_SSL');
+  assert.match(line, /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:\d{2}\] \[tls-proxy\] /);
+});
+
+test('отчёт берёт время со своих часов, а не с системных', () => {
+  // Иначе отметка разошлась бы с логикой свёртывания повторов, и в
+  // тестах это было бы не поймать
+  const r = reporter();
+  r.report({ code: 'ERR_SSL_TLSV1_ALERT_UNKNOWN_CA' }, { remoteAddress: '10.5.10.28' });
+  assert.match(r.lines[0], /^\[1970-01-01 /);
 });

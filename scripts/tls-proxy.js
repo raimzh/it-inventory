@@ -92,6 +92,32 @@ function readCerts(dir) {
 }
 
 /**
+ * Отметка времени для записи в журнал.
+ *
+ * PM2 сам времени не проставляет, а без него запись бесполезна: понять,
+ * относится ли отказ к сегодняшней попытке или лежит с прошлой недели,
+ * не по чему.
+ *
+ * Время местное и со смещением («+05:00»): на сервере оно и так местное,
+ * а смещение снимает вопрос, не UTC ли это — иначе разница в пять часов
+ * незаметно уводит расследование не туда.
+ */
+function formatTimestamp(date) {
+  const d = date || new Date();
+  const p = n => String(n).padStart(2, '0');
+  const offsetMin = -d.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? '+' : '-';
+  const offset = `${sign}${p(Math.floor(Math.abs(offsetMin) / 60))}:${p(Math.abs(offsetMin) % 60)}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+         `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} ${offset}`;
+}
+
+/** Строка журнала: отметка времени и метка процесса. */
+function logLine(message, date) {
+  return `[${formatTimestamp(date)}] [tls-proxy] ${message}`;
+}
+
+/**
  * Расшифровка кода ошибки рукопожатия.
  *
  * Коды вида ERR_SSL_TLSV1_ALERT_UNKNOWN_CA сами по себе ничего не говорят
@@ -169,8 +195,10 @@ function createHandshakeReporter(options) {
     entry.reportedAt = now;
     entry.pending = 0;
 
-    log(`[tls-proxy] рукопожатие не состоялось: ${address}, ${code}${repeats}` +
-        (hint ? ` — ${hint}` : ''));
+    // Время берётся с тех же часов, что и ограничитель частоты, — иначе
+    // отметка разошлась бы с логикой свёртывания повторов
+    log(logLine(`рукопожатие не состоялось: ${address}, ${code}${repeats}` +
+        (hint ? ` — ${hint}` : ''), new Date(now)));
   };
 }
 
@@ -192,7 +220,7 @@ function createProxy(options) {
       proxyReq.on('error', err => {
         // Фронтенд лежит или перезапускается. Отвечаем внятно: иначе
         // браузер покажет обрыв соединения и это спишут на сертификат
-        console.error(`[tls-proxy] ${req.method} ${req.url}: ${err.message}`);
+        console.error(logLine(`${req.method} ${req.url}: ${err.message}`));
         if (!res.headersSent) {
           res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
         }
@@ -255,7 +283,7 @@ function createRedirect(tlsPort) {
 
 module.exports = {
   forwardHeaders, httpsLocation, createProxy, createRedirect,
-  createHandshakeReporter, explainHandshakeFailure,
+  createHandshakeReporter, explainHandshakeFailure, formatTimestamp, logLine,
 };
 
 if (require.main === module) {
@@ -268,10 +296,10 @@ if (require.main === module) {
   }
 
   createProxy(certs).listen(TLS_PORT, '0.0.0.0', () => {
-    console.log(`[tls-proxy] HTTPS на 0.0.0.0:${TLS_PORT} -> ${TARGET_HOST}:${TARGET_PORT}`);
+    console.log(logLine(`HTTPS на 0.0.0.0:${TLS_PORT} -> ${TARGET_HOST}:${TARGET_PORT}`));
   });
 
   createRedirect(TLS_PORT).listen(REDIRECT_PORT, '0.0.0.0', () => {
-    console.log(`[tls-proxy] HTTP на 0.0.0.0:${REDIRECT_PORT} -> перенаправление на HTTPS`);
+    console.log(logLine(`HTTP на 0.0.0.0:${REDIRECT_PORT} -> перенаправление на HTTPS`));
   });
 }
