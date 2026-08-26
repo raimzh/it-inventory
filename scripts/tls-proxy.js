@@ -26,6 +26,13 @@
  *      серверных действий и отклоняет запрос при расхождении — подмена
  *      Host сломает формы, но проявится не сразу.
  *
+ * Отказы TLS-рукопожатия пишутся в журнал (PM2, процесс
+ * it-inventory-tls). Это единственный способ увидеть устройство, которое
+ * не приняло сертификат: со стороны сервера успешное соединение выглядит
+ * одинаково и когда сертификат доверенный, и когда человек нажал «всё
+ * равно перейти». Различает их алерт unknown ca, который устройство
+ * присылает ДО показа предупреждения.
+ *
  * HSTS здесь намеренно НЕ выставляется. Он запрещает браузеру обходить
  * предупреждение о сертификате, а сертификат тут самоподписанный: на
  * планшете без установленного корневого сертификата HSTS превратит
@@ -84,6 +91,89 @@ function readCerts(dir) {
   return { key: fs.readFileSync(key), cert: fs.readFileSync(cert) };
 }
 
+/**
+ * Расшифровка кода ошибки рукопожатия.
+ *
+ * Коды вида ERR_SSL_TLSV1_ALERT_UNKNOWN_CA сами по себе ничего не говорят
+ * тому, кто будет читать журнал через полгода.
+ */
+function explainHandshakeFailure(code) {
+  const c = String(code).toUpperCase();
+  if (c.includes('UNKNOWN_CA')) {
+    // Устройство прислало алерт «не знаю такой центр». Браузер шлёт его
+    // ДО того, как показать предупреждение, поэтому запись появится даже
+    // если человек потом нажмёт «всё равно перейти»
+    return 'устройство не доверяет корневому сертификату: на нём не установлен certs/ca.crt ' +
+           '(на Android ставить как «Сертификат ЦС», а не «Сертификат пользователя»)';
+  }
+  if (c.includes('CERTIFICATE_UNKNOWN') || c.includes('BAD_CERTIFICATE')) {
+    return 'устройство отвергло сертификат сервера';
+  }
+  if (c.includes('CERTIFICATE_EXPIRED')) {
+    return 'срок сертификата истёк: перевыпустите его (npm run cert)';
+  }
+  if (c.includes('WRONG_VERSION_NUMBER') || c.includes('HTTP_REQUEST')) {
+    return 'обращение по http:// на порт HTTPS — нужен адрес вида https://<адрес>:8443';
+  }
+  if (c.includes('NO_SHARED_CIPHER') || c.includes('UNSUPPORTED_PROTOCOL') || c.includes('VERSION')) {
+    return 'клиент слишком старый: сервер требует TLS 1.2 и выше';
+  }
+  if (c.includes('ECONNRESET') || c.includes('EPROTO')) {
+    return 'соединение оборвано до конца рукопожатия (обычно скан портов)';
+  }
+  return '';
+}
+
+/**
+ * Ограничитель частоты записей об отказах рукопожатия.
+ *
+ * Порт 8443 открыт в сеть, и сканеры стучатся в него постоянно. Писать
+ * каждую попытку — значит утопить в шуме единственную запись, ради
+ * которой всё и заводилось. Поэтому пара «адрес + причина» попадает в
+ * журнал сразу, а повторы сворачиваются в счётчик.
+ *
+ * Часы и запись передаются снаружи, чтобы это можно было проверить
+ * тестами, не дожидаясь пяти минут и не засоряя вывод.
+ */
+function createHandshakeReporter(options) {
+  const opts = options || {};
+  const log = opts.log || (msg => console.warn(msg));
+  const intervalMs = opts.intervalMs || 5 * 60 * 1000;
+  const clock = opts.now || (() => Date.now());
+  const seen = new Map();
+
+  return function reportHandshakeFailure(err, socket) {
+    const address = (socket && socket.remoteAddress) || 'адрес неизвестен';
+    const code = (err && (err.code || err.message)) || 'причина неизвестна';
+    const key = `${address} ${code}`;
+    const now = clock();
+
+    // null, а не 0: ноль — это ещё и корректная отметка времени, и
+    // проверка «уже сообщали?» на нём молча перестаёт работать
+    const entry = seen.get(key) || { pending: 0, reportedAt: null };
+    entry.pending += 1;
+    seen.set(key, entry);
+
+    // Скан портов может насыпать сюда сколько угодно разных адресов —
+    // без уборки таблица растёт без предела
+    if (seen.size > 500) {
+      for (const [k, v] of seen) {
+        if (v.reportedAt !== null && now - v.reportedAt > intervalMs) seen.delete(k);
+      }
+    }
+
+    if (entry.reportedAt !== null && now - entry.reportedAt < intervalMs) return;
+
+    const repeats = entry.pending > 1 ? `, повторов с прошлой записи: ${entry.pending}` : '';
+    const hint = explainHandshakeFailure(code);
+    entry.reportedAt = now;
+    entry.pending = 0;
+
+    log(`[tls-proxy] рукопожатие не состоялось: ${address}, ${code}${repeats}` +
+        (hint ? ` — ${hint}` : ''));
+  };
+}
+
 function createProxy(options) {
   const server = https.createServer(
     { key: options.key, cert: options.cert, minVersion: 'TLSv1.2' },
@@ -137,9 +227,10 @@ function createProxy(options) {
     proxyReq.end();
   });
 
-  // Обрыв TLS-рукопожатия — обычное дело (сканеры портов, закрытая
-  // вкладка с непринятым сертификатом). Процесс от этого падать не должен
-  server.on('tlsClientError', () => {});
+  // Обрыв TLS-рукопожатия сам по себе процесс ронять не должен, но и
+  // молчать о нём нельзя: именно так выглядит планшет, который не принял
+  // сертификат, и без записи в журнале об этом узнать неоткуда
+  server.on('tlsClientError', options.reportHandshake || createHandshakeReporter());
   server.on('clientError', (err, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   });
@@ -162,7 +253,10 @@ function createRedirect(tlsPort) {
   });
 }
 
-module.exports = { forwardHeaders, httpsLocation, createProxy, createRedirect };
+module.exports = {
+  forwardHeaders, httpsLocation, createProxy, createRedirect,
+  createHandshakeReporter, explainHandshakeFailure,
+};
 
 if (require.main === module) {
   let certs;
