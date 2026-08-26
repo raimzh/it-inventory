@@ -110,8 +110,20 @@ async function bootstrap() {
     console.error('Department seed error:', e.message);
   }
 
-  await app.listen(process.env.PORT || 3001);
-  console.log(`Backend running on port ${process.env.PORT || 3001}`);
+  // По умолчанию слушаем ТОЛЬКО localhost. Снаружи ходят через терминатор
+  // TLS (scripts/tls-proxy.js), а открытый HTTP на бэкенде сводил бы
+  // шифрование на нет: пароль при входе прямо на :3001 ушёл бы по сети
+  // текстом в обход HTTPS.
+  //
+  // Полагаться на брандмауэр здесь нельзя: установщик Node.js заводит
+  // правила «Node.js JavaScript Runtime», разрешающие node.exe на ЛЮБОМ
+  // порту, и правила по портам их не отменяют. Привязка к адресу от
+  // настроек брандмауэра не зависит.
+  //
+  // В контейнерах сеть между сервисами требует 0.0.0.0 — там HOST задан явно.
+  const host = process.env.HOST || '127.0.0.1';
+  await app.listen(process.env.PORT || 3001, host);
+  console.log(`Backend running on ${host}:${process.env.PORT || 3001}`);
 }
 
 bootstrap();
