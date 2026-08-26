@@ -111,12 +111,10 @@ export class ReportsService {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Инвентаризационная ведомость');
 
-    ws.mergeCells('A1:K1');
-    ws.getCell('A1').value = `Инвентаризационная ведомость: ${session?.name || ''}`;
-    ws.getCell('A1').alignment = { horizontal: 'center' };
-    ws.getCell('A1').font = { bold: true, size: 14 };
-    ws.addRow([]);
-
+    // Колонки задаются ПЕРВЫМ делом. Присваивание ws.columns кладёт их
+    // названия в первую строку, поэтому написанный туда раньше заголовок
+    // затирался: ведомость уходила без названия сессии, а оформление
+    // строки заголовков доставалось первой строке данных.
     ws.columns = [
       { header: '№', key: 'num', width: 5 },
       { header: 'Инв. номер', key: 'inventoryNumber', width: 15 },
@@ -131,9 +129,16 @@ export class ReportsService {
       { header: 'Комментарий', key: 'comment', width: 30 },
     ];
 
-    ws.getRow(3).font = { bold: true };
-    ws.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-    ws.getRow(3).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    // Заголовок ведомости вставляется сверху отдельной строкой, поэтому
+    // строка с названиями колонок съезжает на вторую
+    ws.spliceRows(1, 0, [`Инвентаризационная ведомость: ${session?.name || ''}`]);
+    ws.mergeCells('A1:K1');
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+    ws.getCell('A1').font = { bold: true, size: 14 };
+
+    const headerRow = ws.getRow(2);
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
 
     const statusLabels: Record<string, string> = {
       active: 'В наличии', not_found: 'Не найдено', transferred: 'Передано',
