@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { SyncLog, SyncStatus } from './entities/sync-log.entity';
 import { Asset, AssetStatus } from '../assets/entities/asset.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { parseDateCell } from '../../common/excel/parse-date-cell';
 
 interface OneCAsset {
   Ref_Key?: string;
@@ -122,26 +123,44 @@ export class SyncService {
         const existing = await this.assetRepo.findOne({ where: { inventoryNumber: invNumber } })
           || await this.assetRepo.findOne({ where: { oneCGuid: raw.Ref_Key } });
 
+        // Поля, которых в выгрузке нет, остаются undefined: TypeORM не
+        // включает их в UPDATE, и прежнее значение сохраняется. Раньше
+        // наименование и стоимости имели запасные значения — `|| invNumber`
+        // и `|| 0`, — и обмен затирал ими то, что уже было в учёте:
+        // выгрузка без стоимости обнуляла остаточную у всех записей,
+        // а выгрузка без наименования подменяла его инвентарным номером.
+        const name = raw.Description || raw['Наименование'];
+        const residual = raw['ОстаточнаяСтоимость'] ?? raw.ResidualValue;
+        const initial = raw['ПервоначальнаяСтоимость'] ?? raw.InitialValue;
+        const commissioning = parseDateCell(raw['ДатаВводаВЭксплуатацию'] ?? raw.CommissioningDate);
+
         const mapped: Partial<Asset> = {
           inventoryNumber: invNumber,
-          name: raw.Description || raw['Наименование'] || invNumber,
           serialNumber: raw['СерийныйНомер'] || raw.SerialNumber,
           departmentName: raw['Подразделение'] || raw.Department,
           location: raw['Местоположение'] || raw.Location,
           responsiblePerson: raw['ОтветственноеЛицо'] || raw.ResponsiblePerson,
-          commissioningDate: raw['ДатаВводаВЭксплуатацию'] ? new Date(raw['ДатаВводаВЭксплуатацию']) : undefined,
-          residualValue: raw['ОстаточнаяСтоимость'] || raw.ResidualValue || 0,
-          initialValue: raw['ПервоначальнаяСтоимость'] || raw.InitialValue || 0,
           oneCId: raw.Code,
           oneCGuid: raw.Ref_Key,
           lastSyncedAt: new Date(),
         };
+        if (name) mapped.name = name;
+        if (residual !== undefined && residual !== null) mapped.residualValue = residual;
+        if (initial !== undefined && initial !== null) mapped.initialValue = initial;
+        // Дата разбирается тем же модулем, что и импорт из Excel: 1С отдаёт
+        // и ISO, и ДД.ММ.ГГГГ, а `new Date` на втором формате либо не
+        // понимает вовсе, либо молча подставляет другую дату
+        if (commissioning) mapped.commissioningDate = new Date(`${commissioning}T00:00:00Z`);
 
         if (existing) {
           await this.assetRepo.update(existing.id, mapped);
           updated++;
         } else {
-          await this.assetRepo.save(this.assetRepo.create({ ...mapped, status: AssetStatus.ACTIVE }));
+          // У новой записи наименование обязательно — здесь запасное
+          // значение уместно: затирать нечего
+          await this.assetRepo.save(this.assetRepo.create({
+            ...mapped, name: mapped.name ?? invNumber, status: AssetStatus.ACTIVE,
+          }));
           created++;
         }
       } catch (err: any) {

@@ -144,6 +144,12 @@ jobs:
       - name: Версия pg_dump
         run: pg_dump --version && psql --version
 
+      - name: Обмен с 1С
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:sync
+
       - name: Резервные копии
         working-directory: backend
         env:

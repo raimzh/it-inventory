@@ -17,7 +17,8 @@
     "test:import": "node --test test/excel-import.test.js",
     "test:auth": "node --test test/auth.test.js",
     "test:inventory": "node --test test/inventory.test.js",
-    "test:backup": "node --test test/backup.test.js"
+    "test:backup": "node --test test/backup.test.js",
+    "test:sync": "node --test test/sync.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",
