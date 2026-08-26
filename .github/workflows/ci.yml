@@ -131,6 +131,12 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:auth
 
+      - name: Ход инвентаризации
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:inventory
+
       - name: Разбор этикеток и поиск по коду
         working-directory: backend
         env:
