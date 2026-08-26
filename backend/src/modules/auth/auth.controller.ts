@@ -8,6 +8,18 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 
+/**
+ * Предел попыток входа на одну учётную запись за минуту.
+ *
+ * Значение по умолчанию — прежние 5, поведение боевого стенда не
+ * меняется. Настройка нужна прогону тестов: счётчик ведётся по логину,
+ * а наборов, входящих администратором, уже шесть, и они укладываются в
+ * одну минуту — шестой упирался в 429 и валил всё, что шло следом.
+ * Ослаблять защиту ради этого нельзя, поэтому предел поднимается только
+ * там, где перебора не бывает.
+ */
+const LOGIN_ATTEMPTS_PER_MINUTE = Number(process.env.LOGIN_THROTTLE_LIMIT) || 5;
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -16,7 +28,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @UseGuards(IdentityThrottlerGuard)
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @Throttle({ default: { ttl: 60000, limit: LOGIN_ATTEMPTS_PER_MINUTE } })
   @ApiOperation({ summary: 'Вход в систему' })
   async login(@Body() loginDto: LoginDto) {
     const user = await this.authService.validateUser(loginDto.username, loginDto.password);
