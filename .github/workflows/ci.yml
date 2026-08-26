@@ -184,6 +184,11 @@ jobs:
         working-directory: backend
         run: npm run test:import
 
+      # Заглушка вместо базы: гонку по времени иначе не воспроизвести
+      - name: Удаление учётной записи со следом
+        working-directory: backend
+        run: npm run test:users-fallback
+
       # Терминатор TLS лежит в корне и зависимостей не имеет, поэтому
       # прогоняется здесь же, без отдельной установки
       - name: Заголовки TLS-терминатора

@@ -132,6 +132,7 @@ npm test                     # заголовки и перенаправлен�
 
 ```bash
 npm --prefix backend run test:import
+npm --prefix backend run test:users-fallback
 ```
 
 Остальные наборы бьют по **запущенному экземпляру** через HTTP и пишут
