@@ -144,8 +144,8 @@ export default function AssetDetailPage() {
     ["Модель", asset.model || null],
     ["Категория", asset.category || null],
     ["Дата ввода", asset.commissioningDate ? new Date(asset.commissioningDate).toLocaleDateString("ru-RU") : null],
-    ["Первоначальная стоимость", asset.initialValue ? `${Number(asset.initialValue).toLocaleString("ru-RU")} ₽` : null],
-    ["Остаточная стоимость", `${Number(asset.residualValue).toLocaleString("ru-RU")} ₽`],
+    ["Первоначальная стоимость", asset.initialValue ? `${Number(asset.initialValue).toLocaleString("ru-RU")} ₸` : null],
+    ["Остаточная стоимость", `${Number(asset.residualValue).toLocaleString("ru-RU")} ₸`],
     ["Последняя синхронизация с 1С", asset.lastSyncedAt ? new Date(asset.lastSyncedAt).toLocaleString("ru-RU") : "Не синхронизировано"],
   ];
 

@@ -209,12 +209,12 @@ export default function NewAssetPage() {
             </div>
 
             <div>
-              <label className="label">Первоначальная стоимость, ₽</label>
+              <label className="label">Первоначальная стоимость, ₸</label>
               <input type="number" step="0.01" className="input" value={form.initialValue}
                 onChange={e => set("initialValue", e.target.value)} />
             </div>
             <div>
-              <label className="label">Остаточная стоимость, ₽</label>
+              <label className="label">Остаточная стоимость, ₸</label>
               <input type="number" step="0.01" className="input" value={form.residualValue}
                 onChange={e => set("residualValue", e.target.value)} />
             </div>
