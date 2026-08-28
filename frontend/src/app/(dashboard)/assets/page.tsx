@@ -254,7 +254,7 @@ export default function AssetsPage() {
                     <th className="th hidden lg:table-cell">Категория</th>
                     <th className="th hidden md:table-cell">Подразделение</th>
                     <th className="th hidden lg:table-cell">Ответственный</th>
-                    <th className="th hidden xl:table-cell text-right">Стоимость, ₽</th>
+                    <th className="th hidden xl:table-cell text-right">Стоимость, ₸</th>
                     <th className="th">Статус</th>
                     <th className="th text-right">Действия</th>
                   </tr>

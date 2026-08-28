@@ -149,7 +149,7 @@ export default function DashboardPage() {
           />
           <StatCard
             title="Остаточная стоимость"
-            value={stats ? `${Number(stats.totalResidualValue).toLocaleString("ru-RU")} ₽` : "—"}
+            value={stats ? `${Number(stats.totalResidualValue).toLocaleString("ru-RU")} ₸` : "—"}
             icon={TrendingUp}
             iconBg="bg-primary-50 dark:bg-primary-950/40"
             iconColor="text-primary-600 dark:text-primary-400"

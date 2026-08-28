@@ -183,7 +183,7 @@ export default function ReportsPage() {
                       <td className={`td text-gray-600 dark:text-slate-400 tabular-nums ${DEPT_REPORT_COL_HIDE[1]}`}>{d.total}</td>
                       <td className={`td text-green-600 dark:text-green-400 font-semibold tabular-nums ${DEPT_REPORT_COL_HIDE[2]}`}>{d.active}</td>
                       <td className={`td text-red-500 dark:text-red-400 font-semibold tabular-nums ${DEPT_REPORT_COL_HIDE[3]}`}>{d.notFound}</td>
-                      <td className={`td text-gray-600 dark:text-slate-400 tabular-nums ${DEPT_REPORT_COL_HIDE[4]}`}>{Number(d.totalValue || 0).toLocaleString("ru-RU")} ₽</td>
+                      <td className={`td text-gray-600 dark:text-slate-400 tabular-nums ${DEPT_REPORT_COL_HIDE[4]}`}>{Number(d.totalValue || 0).toLocaleString("ru-RU")} ₸</td>
                     </tr>
                   ))}
                   {!deptReport?.length && (

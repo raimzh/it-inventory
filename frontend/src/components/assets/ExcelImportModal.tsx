@@ -397,7 +397,7 @@ export default function ExcelImportModal({
                           <td className="px-3 py-2 text-gray-500 text-xs hidden md:table-cell">{row.responsiblePerson || "—"}</td>
                           <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300 text-xs hidden md:table-cell">
                             {row.residualValue != null && !isNaN(Number(row.residualValue))
-                              ? Number(row.residualValue).toLocaleString("ru-RU") + " ₽"
+                              ? Number(row.residualValue).toLocaleString("ru-RU") + " ₸"
                               : "—"}
                           </td>
                           <td className="px-3 py-2 text-red-500 text-xs">{row.error ?? ""}</td>
