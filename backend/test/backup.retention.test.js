@@ -67,7 +67,14 @@ function service(env = {}) {
   return {
     logs,
     clean: (dir, keep) => BackupService.prototype.cleanOldBackups.call(self, dir, keep),
+    warnMirror: dir => BackupService.prototype.warnIfMirrorCrowded.call(self, dir),
   };
+}
+
+/** Файл заданного размера — для проверки порога по объёму архива */
+function putSized(dir, name, bytes) {
+  fs.writeFileSync(path.join(dir, name), Buffer.alloc(bytes));
+  return name;
 }
 
 const listing = dir => fs.readdirSync(dir).sort();
@@ -255,4 +262,68 @@ test('пустой каталог обрабатывается без ошибо
   const svc = service({ BACKUP_RETENTION_DAYS: '750' });
   const res = await svc.clean(tmpDir());
   assert.deepEqual(res, { deleted: 0, kept: 0, failed: 0, skipped: false });
+});
+
+// --- Предупреждение о разрастании архива ----------------------------------
+//
+// Зеркало не чистится никогда, поэтому однажды упрётся в квоту облачного
+// хранилища. Само исчерпание квоты из Node не увидеть: OneDrive перестаёт
+// синхронизировать молча, а copyFileSync отчитывается успехом. Всё, до чего
+// можно дотянуться, — объём самого архива, и предупредить заранее.
+
+test('превышение порога попадает в журнал', () => {
+  const dir = tmpDir();
+  putSized(dir, 'backup-2020-01-01T00-00-00-000Z.sql.enc', 3 * 1024 * 1024);
+
+  // Порог в мегабайтах задать нельзя, поэтому берём долю гигабайта
+  const svc = service({ BACKUP_MIRROR_WARN_GB: String(2 / 1024) });
+  svc.warnMirror(dir);
+
+  assert.equal(svc.logs.log.length, 1, 'ожидается ровно одно предупреждение');
+  assert.match(svc.logs.log[0], /Архив копий/);
+  assert.match(svc.logs.log[0], /синхронизировать копии молча/,
+    'запись должна называть настоящую опасность, а не только цифру');
+});
+
+test('ниже порога журнал молчит', () => {
+  // Ложные тревоги приводят к тому, что журнал перестают читать
+  const dir = tmpDir();
+  putSized(dir, 'backup-2020-01-01T00-00-00-000Z.sql.enc', 1024);
+
+  const svc = service({ BACKUP_MIRROR_WARN_GB: '2' });
+  svc.warnMirror(dir);
+
+  assert.equal(svc.logs.log.length, 0);
+  assert.equal(svc.logs.error.length, 0);
+});
+
+test('ноль и мусор выключают проверку', () => {
+  const dir = tmpDir();
+  putSized(dir, 'backup-2020-01-01T00-00-00-000Z.sql.enc', 3 * 1024 * 1024);
+
+  for (const v of ['0', '-1', 'abc', '']) {
+    const svc = service({ BACKUP_MIRROR_WARN_GB: v });
+    svc.warnMirror(dir);
+    assert.equal(svc.logs.log.length, 0, `${v} должно выключать предупреждение`);
+  }
+});
+
+test('считается весь каталог, а не только копии', () => {
+  // В архиве может лежать что угодно — квоту занимает всё вместе
+  const dir = tmpDir();
+  putSized(dir, 'backup-2020-01-01T00-00-00-000Z.sql.enc', 1024 * 1024);
+  putSized(dir, 'посторонний.zip', 3 * 1024 * 1024);
+
+  const svc = service({ BACKUP_MIRROR_WARN_GB: String(3.5 / 1024) });
+  svc.warnMirror(dir);
+
+  assert.equal(svc.logs.log.length, 1, 'посторонние файлы тоже занимают квоту');
+});
+
+test('недоступный каталог не роняет копирование', () => {
+  // Оценка объёма — вспомогательная задача: её сбой не должен помешать
+  // ни дублированию, ни созданию копии
+  const svc = service({ BACKUP_MIRROR_WARN_GB: '2' });
+  assert.doesNotThrow(() => svc.warnMirror(path.join(tmpDir(), 'нет-такого')));
+  assert.ok(svc.logs.error.length > 0, 'но в журнале след остаться должен');
 });

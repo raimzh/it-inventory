@@ -39,6 +39,15 @@ const isBackupFile = (f: string) => BACKUP_FILENAME_RE.test(f);
  */
 const DEFAULT_RETENTION_DAYS = 750;
 
+/**
+ * При каком объёме архива копий (BACKUP_MIRROR_DIR) начинать предупреждать.
+ *
+ * 2 ГБ выбраны как запас времени, а не как предел: при копии в 730 КБ это
+ * около семи лет, но если база вырастет на порядок — год-полтора, и тогда
+ * предупреждение появится вовремя. Ноль или мусор выключают проверку.
+ */
+const DEFAULT_MIRROR_WARN_GB = 2;
+
 /** Что делать с ротацией: сколько дней держать и держать ли вообще. */
 export interface RetentionPolicy {
   days: number;
@@ -221,8 +230,59 @@ export class BackupService {
       const target = path.join(mirrorDir, path.basename(filePath));
       fs.copyFileSync(filePath, target);
       this.logger.log(`Копия продублирована: ${target}`);
+      this.warnIfMirrorCrowded(mirrorDir);
     } catch (err: any) {
       this.logger.error(`Не удалось продублировать копию в ${mirrorDir}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Предупреждение о разрастании архива копий.
+   *
+   * ЧЕГО ЭТО НЕ ДЕЛАЕТ: не обнаруживает исчерпание облачной квоты. OneDrive
+   * при полном хранилище перестаёт синхронизировать МОЛЧА — файл остаётся
+   * лежать в локальной папке, copyFileSync отчитывается успехом, а за
+   * пределы машины копия не уходит. Это ровно тот отказ, ради которого
+   * зеркало и заводилось, и добраться до него из Node нечем: состояние
+   * синхронизации OneDrive наружу не отдаёт.
+   *
+   * Свободное место на диске тоже не показатель: зеркало обычно лежит на том
+   * же томе, где сотни свободных гигабайт, а кончается облачная квота.
+   *
+   * Что остаётся и что здесь делается — следить за размером самого архива.
+   * Он не чистится никогда (это решение, см. cleanOldBackups), поэтому рано
+   * или поздно упрётся в квоту. Порог даёт время заметить это заранее.
+   */
+  private warnIfMirrorCrowded(mirrorDir: string): void {
+    try {
+      const raw = this.config.get('BACKUP_MIRROR_WARN_GB', String(DEFAULT_MIRROR_WARN_GB));
+      const limitGb = Number(String(raw).trim());
+      // Ноль или мусор — предупреждение выключено. Молчать безопаснее, чем
+      // сыпать ложными тревогами в журнал, который иначе перестанут читать
+      if (!Number.isFinite(limitGb) || limitGb <= 0) return;
+
+      let bytes = 0;
+      for (const f of fs.readdirSync(mirrorDir)) {
+        try {
+          bytes += fs.statSync(path.join(mirrorDir, f)).size;
+        } catch {
+          // Файл исчез между чтением каталога и опросом — для оценки объёма
+          // это несущественно
+        }
+      }
+
+      const gb = bytes / 1024 ** 3;
+      if (gb >= limitGb) {
+        this.logger.warn(
+          `Архив копий в ${mirrorDir} занимает ${gb.toFixed(1)} ГБ (порог ${limitGb} ГБ). ` +
+          'Из него ничего не удаляется автоматически. Проверьте свободную квоту: ' +
+          'при переполнении хранилище перестанет синхронизировать копии молча',
+        );
+      }
+    } catch (err: any) {
+      // Оценка объёма — вспомогательная задача: её сбой не должен мешать
+      // ни копированию, ни созданию копии
+      this.logger.error(`Не удалось оценить объём архива копий: ${err.message}`);
     }
   }
 
