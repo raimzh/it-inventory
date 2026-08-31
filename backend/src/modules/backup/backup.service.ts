@@ -26,6 +26,77 @@ const execFileAsync = promisify(execFile);
 const BACKUP_FILENAME_RE = /^backup-[0-9TZ:.-]+\.sql(\.enc)?$/;
 const isBackupFile = (f: string) => BACKUP_FILENAME_RE.test(f);
 
+/**
+ * Сколько дней держать копии в локальном каталоге.
+ *
+ * 750 дней ≈ два года: годовую инвентаризацию должно быть с чем сравнить.
+ * Объём при этом не пугает — копия базы весит порядка 730 КБ, то есть
+ * полный срок занимает около 535 МБ. Если копия однажды вырастет на
+ * порядок, пересчитайте это число вместе со свободным местом: заполнить
+ * диск рядом с базой означает уронить саму базу, а не только копии.
+ *
+ * Зеркало (BACKUP_MIRROR_DIR) этим сроком НЕ ограничено, см. cleanOldBackups.
+ */
+const DEFAULT_RETENTION_DAYS = 750;
+
+/** Что делать с ротацией: сколько дней держать и держать ли вообще. */
+export interface RetentionPolicy {
+  days: number;
+  /** false — не удалять ничего */
+  enabled: boolean;
+  /** Значение задано и оно бессмысленное: в журнал это идёт как ошибка */
+  invalid: boolean;
+  reason?: string;
+}
+
+/**
+ * Разбор BACKUP_RETENTION_DAYS.
+ *
+ * Любое непонятное значение ОТКЛЮЧАЕТ ротацию, а не подставляет умолчание.
+ * Это единственное место в системе, которое необратимо удаляет данные:
+ * при сомнении надо сохранить лишнее, а не удалить нужное.
+ *
+ * Ноль трактуется как «хранить бессрочно». Раньше он означал ровно
+ * обратное — давал границу, равную текущему моменту, и первая же ночная
+ * задача сносила ВСЕ копии, включая только что созданную. Подмена смысла
+ * на противоположный — худшее, что могло случиться с этой настройкой.
+ *
+ * Number, а не parseInt: parseInt('30d') это 30, а parseInt('30.5') это 30 —
+ * опечатка молча превратилась бы в правдоподобный срок.
+ */
+export function resolveRetentionDays(raw?: unknown): RetentionPolicy {
+  const text = raw === undefined || raw === null ? '' : String(raw).trim();
+  if (text === '') {
+    return { days: DEFAULT_RETENTION_DAYS, enabled: true, invalid: false };
+  }
+
+  const n = Number(text);
+  if (!Number.isInteger(n)) {
+    return {
+      days: 0, enabled: false, invalid: true,
+      reason: `BACKUP_RETENTION_DAYS="${text}" — не целое число дней`,
+    };
+  }
+  if (n === 0) {
+    return {
+      days: 0, enabled: false, invalid: false,
+      reason: 'BACKUP_RETENTION_DAYS=0 — копии хранятся бессрочно',
+    };
+  }
+  if (n < 0) {
+    return {
+      days: 0, enabled: false, invalid: true,
+      reason: `BACKUP_RETENTION_DAYS=${n} — отрицательный срок`,
+    };
+  }
+  return { days: n, enabled: true, invalid: false };
+}
+
+/** Итог уборки: нужен, чтобы её сбой было видно отдельно от сбоя копирования. */
+export interface RotationSummary {
+  deleted: number; kept: number; failed: number; skipped: boolean;
+}
+
 export interface BackupRecord {
   id: string; filename: string; path: string; size: number;
   type: string; status: string; createdAt: Date; expiresAt: Date;
@@ -37,6 +108,9 @@ export class BackupService {
 
   constructor(private config: ConfigService) {}
 
+  // process.env, а не this.config: декоратор вычисляется при загрузке класса,
+  // когда контейнера внедрения зависимостей ещё нет. Это не недосмотр —
+  // переписать на ConfigService нельзя
   @Cron(process.env.BACKUP_CRON || '0 2 * * *')
   async scheduledBackup() {
     this.logger.log('Scheduled backup started');
@@ -83,7 +157,17 @@ export class BackupService {
       // копии рядом с ней пропадут заодно.
       await this.mirrorOffMachine(finalPath);
 
-      await this.cleanOldBackups(backupDir);
+      // Уборка идёт последней и не умеет бросать (см. cleanOldBackups).
+      // Раньше её сбой попадал в общий catch ниже и выдавался наружу как
+      // «Backup failed» — при том, что копия уже создана и продублирована.
+      // Администратор шёл искать несуществующую беду с копированием вместо
+      // настоящей: прав на каталог
+      const rotation = await this.cleanOldBackups(backupDir, finalName);
+      if (rotation.failed) {
+        this.logger.error(
+          `Копия ${finalName} создана, но уборка старых прошла с ошибками: ${rotation.failed}`,
+        );
+      }
       return { filename: finalName, size: stats.size };
     } catch (err: any) {
       this.logger.error('Backup failed', err.message);
@@ -142,18 +226,65 @@ export class BackupService {
     }
   }
 
-  private async cleanOldBackups(backupDir: string) {
-    const retentionDays = parseInt(this.config.get('BACKUP_RETENTION_DAYS', '30'));
-    const cutoff = new Date(Date.now() - retentionDays * 24 * 3600 * 1000);
-    const files = fs.readdirSync(backupDir).filter(isBackupFile);
-    for (const file of files) {
-      const fpath = path.join(backupDir, file);
-      const stat = fs.statSync(fpath);
-      if (stat.mtime < cutoff) {
-        fs.unlinkSync(fpath);
-        this.logger.log(`Deleted old backup: ${file}`);
+  /**
+   * Ротация копий в ЛОКАЛЬНОМ каталоге (BACKUP_DIR).
+   *
+   * Зеркало (BACKUP_MIRROR_DIR) здесь не трогается сознательно: локальный
+   * каталог живёт на диске рядом с базой и ограничен его объёмом, а зеркало —
+   * бессрочный архив. Асимметрия намеренная, а не забытая.
+   *
+   * Метод не бросает исключений НИКОГДА — на этом держится вызов в
+   * createBackup. Инвариант закреплён тестом (assert.doesNotReject), потому
+   * что полагаться на аккуратность будущих правок здесь слишком дорого.
+   *
+   * keepFilename — копия, созданная в этом же запуске: её не удаляем ни при
+   * каких настройках. Дешёвая страховка от любой ошибки в арифметике окна.
+   */
+  private async cleanOldBackups(backupDir: string, keepFilename?: string): Promise<RotationSummary> {
+    const summary: RotationSummary = { deleted: 0, kept: 0, failed: 0, skipped: false };
+
+    try {
+      const policy = resolveRetentionDays(this.config.get('BACKUP_RETENTION_DAYS'));
+      if (!policy.enabled) {
+        summary.skipped = true;
+        if (policy.invalid) {
+          this.logger.error(`Ротация отключена: ${policy.reason}. Копии НЕ удаляются — поправьте .env`);
+        } else {
+          this.logger.log(`Ротация не выполняется: ${policy.reason}`);
+        }
+        return summary;
       }
+
+      const cutoff = Date.now() - policy.days * 24 * 3600 * 1000;
+
+      for (const file of fs.readdirSync(backupDir).filter(isBackupFile)) {
+        if (keepFilename && file === keepFilename) { summary.kept++; continue; }
+        const fpath = path.join(backupDir, file);
+        try {
+          // mtimeMs, а не mtime: сравнение чисел вместо дат. При нечисловой
+          // границе сравнение объектов Date молча давало false — верный итог
+          // по случайной причине, на такое опираться нельзя
+          if (fs.statSync(fpath).mtimeMs >= cutoff) { summary.kept++; continue; }
+          fs.unlinkSync(fpath);
+          summary.deleted++;
+          this.logger.log(`Удалена устаревшая копия: ${file}`);
+        } catch (err: any) {
+          // Один заблокированный файл не должен останавливать уборку остальных
+          summary.failed++;
+          this.logger.error(`Не удалось удалить ${file}: ${err.message}`);
+        }
+      }
+
+      this.logger.log(
+        `Ротация (${policy.days} дн.): удалено ${summary.deleted}, оставлено ${summary.kept}` +
+        (summary.failed ? `, ошибок ${summary.failed}` : ''),
+      );
+    } catch (err: any) {
+      summary.failed++;
+      this.logger.error(`Ротация копий не выполнена: ${err.message}`);
     }
+
+    return summary;
   }
 
   async listBackups() {

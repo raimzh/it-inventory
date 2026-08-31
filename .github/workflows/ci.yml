@@ -156,6 +156,13 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:sync
 
+      # Идёт ПЕРЕД набором по HTTP: если ротация сломана, узнать об этом надо
+      # раньше, чем тесты начнут создавать настоящие копии. Базы не требует —
+      # каталог временный
+      - name: Срок хранения и ротация копий
+        working-directory: backend
+        run: npm run test:backup-retention
+
       - name: Резервные копии
         working-directory: backend
         env:

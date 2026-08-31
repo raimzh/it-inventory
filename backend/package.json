@@ -19,6 +19,7 @@
     "test:auth": "node --test test/auth.test.js",
     "test:inventory": "node --test test/inventory.test.js",
     "test:backup": "node --test test/backup.test.js",
+    "test:backup-retention": "node --test test/backup.retention.test.js",
     "test:sync": "node --test test/sync.test.js",
     "test:reports": "node --test test/reports.test.js"
   },
