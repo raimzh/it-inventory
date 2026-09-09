@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { assetsApi, departmentsApi, reportsApi, downloadBlob } from "@/lib/api";
@@ -72,7 +72,14 @@ export default function AssetsPage() {
   const [batch, setBatch] = useState<{ assets: Asset[]; startNo: number; totalNo: number } | null>(null);
 
   // Состав и порядок колонок задаёт пользователь; настройка своя у каждого
+  // и хранится на сервере, поэтому переносится между рабочими местами
   const columnConfig = useTableColumns(s => s.byUser[user?.id ?? "anon"]);
+  const hydrateColumns = useTableColumns(s => s.hydrate);
+
+  // Локальная копия отрисуется сразу, серверная догонит и заменит её
+  useEffect(() => {
+    if (user?.id) hydrateColumns(user.id);
+  }, [user?.id, hydrateColumns]);
   const columns = useMemo(() => visibleColumns(columnConfig), [columnConfig]);
   const filters = useMemo(() => activeFilters(columnConfig), [columnConfig]);
 

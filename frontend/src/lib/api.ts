@@ -93,6 +93,19 @@ export const assetsApi = {
 };
 
 // Departments
+/**
+ * Настройки интерфейса текущего пользователя.
+ *
+ * Идентификатор пользователя в адрес не передаётся: сервер берёт его из
+ * токена. Иначе любой авторизованный мог бы читать и переписывать чужие
+ * настройки.
+ */
+export const preferencesApi = {
+  get: (key: string) => api.get(`/preferences/${key}`),
+  set: (key: string, value: unknown) => api.put(`/preferences/${key}`, { value }),
+  remove: (key: string) => api.delete(`/preferences/${key}`),
+};
+
 export const departmentsApi = {
   getAll: () => api.get("/departments"),
   create: (data: any) => api.post("/departments", data),

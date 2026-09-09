@@ -138,6 +138,7 @@ npm test                     # заголовки и перенаправлен�
 ```bash
 npm --prefix backend run test:import
 npm --prefix backend run test:users-fallback
+npm --prefix backend run test:preferences  # настройки интерфейса
 npm --prefix backend run test:backup-retention
 ```
 

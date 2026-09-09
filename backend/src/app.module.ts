@@ -20,6 +20,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { HealthModule } from './modules/health/health.module';
+import { PreferencesModule } from './modules/preferences/preferences.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 
@@ -80,6 +81,7 @@ import { MetricsMiddleware } from './common/middleware/metrics.middleware';
     DepartmentsModule,
     WarehouseModule,
     HealthModule,
+    PreferencesModule,
     MetricsModule,
   ],
   providers: [

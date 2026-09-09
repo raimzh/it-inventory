@@ -187,6 +187,12 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:users
 
+      - name: Настройки интерфейса пользователя
+        working-directory: backend
+        env:
+          BASE_URL: http://localhost:3009
+        run: npm run test:preferences
+
       - name: Разбор дат и колонок при импорте
         working-directory: backend
         run: npm run test:import
