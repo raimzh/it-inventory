@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { assetsApi, departmentsApi, reportsApi, downloadBlob } from "@/lib/api";
@@ -12,13 +12,44 @@ import { BulkLabelDialog } from "@/components/assets/BulkLabelDialog";
 import { AssetLabelBatch } from "@/components/assets/AssetLabelBatch";
 import { ASSET_STATUS_LABELS, AssetStatus, Asset, Department, ASSET_CATEGORIES } from "@/types";
 import { useAuthStore } from "@/store/auth.store";
+import { useTableColumns } from "@/store/table-columns.store";
+import { visibleColumns, activeFilters, BREAKPOINT_CLASS } from "@/lib/table-columns";
+import { ColumnSettingsDialog } from "@/components/assets/ColumnSettingsDialog";
 import { useDebounce } from "@/hooks/useDebounce";
 import { toast } from "@/store/toast.store";
 import {
-  Download, Plus, Search, X, ChevronLeft, ChevronRight, Upload, FileSpreadsheet, Printer,
+  Download, Plus, Search, X, ChevronLeft, ChevronRight, Upload, FileSpreadsheet, Printer, Settings2,
 } from "lucide-react";
 
 const STATUSES = Object.entries(ASSET_STATUS_LABELS) as [AssetStatus, string][];
+
+/**
+ * Оформление ячеек и заглушек по ключу колонки.
+ *
+ * Вынесено в таблицы соответствий, потому что порядок и состав колонок
+ * теперь задаёт пользователь: вшить оформление в разметку больше нельзя.
+ */
+const SKELETON_CLASS: Record<string, string> = {
+  inventoryNumber: "h-4 w-24",
+  name: "h-4 w-48",
+  category: "h-4 w-24",
+  departmentName: "h-4 w-32",
+  responsiblePerson: "h-4 w-32",
+  ownerName: "h-4 w-28",
+  location: "h-4 w-28",
+  residualValue: "h-4 w-20",
+  status: "h-5 w-20 rounded-full",
+};
+
+const CELL_CLASS: Record<string, string> = {
+  inventoryNumber: "font-mono text-xs text-gray-500 dark:text-slate-400",
+  name: "font-semibold text-gray-900 dark:text-white max-w-xs truncate",
+  ownerName: "text-gray-500 dark:text-slate-400 max-w-[12rem] truncate",
+  location: "text-gray-500 dark:text-slate-400 max-w-[12rem] truncate",
+  residualValue: "text-right text-gray-600 dark:text-slate-400 tabular-nums",
+  status: "",
+  actions: "text-right",
+};
 
 export default function AssetsPage() {
   const router = useRouter();
@@ -36,14 +67,51 @@ export default function AssetsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [labelsDialog, setLabelsDialog] = useState(false);
+  const [columnsDialog, setColumnsDialog] = useState(false);
   // Пачка, готовая к печати: набор ОС и с какого номера начали
   const [batch, setBatch] = useState<{ assets: Asset[]; startNo: number; totalNo: number } | null>(null);
 
+  // Состав и порядок колонок задаёт пользователь; настройка своя у каждого
+  const columnConfig = useTableColumns(s => s.byUser[user?.id ?? "anon"]);
+  const columns = useMemo(() => visibleColumns(columnConfig), [columnConfig]);
+  const filters = useMemo(() => activeFilters(columnConfig), [columnConfig]);
+
+  // Фильтр по скрытой колонке не применяется. Иначе вышло бы «куда делись
+  // записи»: отбор продолжает действовать, а увидеть и снять его негде.
+  //
+  // При этом выбранное значение НЕ стирается: скрытие колонки — действие
+  // про отображение, терять из-за него настроенный отбор незачем. Вернёте
+  // колонку — вернётся и фильтр, уже видимый на экране.
+  const effStatus = filters.has("status") ? statusFilter : "";
+  const effDept = filters.has("department") ? deptFilter : "";
+  const effCat = filters.has("category") ? catFilter : "";
+
+  /** Содержимое ячейки по ключу колонки. */
+  const renderCell = (key: string, asset: Asset) => {
+    switch (key) {
+      case "inventoryNumber": return asset.inventoryNumber;
+      case "name": return asset.name;
+      case "category": return asset.category || "—";
+      case "departmentName": return asset.departmentName || "—";
+      case "responsiblePerson": return asset.responsiblePerson || "—";
+      case "ownerName": return asset.ownerName || "—";
+      case "location": return asset.location || "—";
+      case "residualValue": return Number(asset.residualValue).toLocaleString("ru-RU");
+      case "status": return <AssetStatusBadge status={asset.status} />;
+      case "actions": return (
+        <Button variant="ghost" size="xs" onClick={() => router.push(`/assets/${asset.id}`)}>
+          Открыть
+        </Button>
+      );
+      default: return null;
+    }
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ["assets", debouncedSearch, statusFilter, deptFilter, catFilter, page],
+    queryKey: ["assets", debouncedSearch, effStatus, effDept, effCat, page],
     queryFn: () =>
       assetsApi
-        .getAll({ search: debouncedSearch, status: statusFilter || undefined, departmentId: deptFilter || undefined, category: catFilter || undefined, page, limit: 25 })
+        .getAll({ search: debouncedSearch, status: effStatus || undefined, departmentId: effDept || undefined, category: effCat || undefined, page, limit: 25 })
         .then(r => r.data),
     placeholderData: (prev: any) => prev,
   });
@@ -89,15 +157,15 @@ export default function AssetsPage() {
   // (бэкенд: POST /assets и POST /assets/bulk-update → admin, accountant)
   const canManage = user && ["admin", "accountant"].includes(user.role);
   const canImport = user && ["admin", "accountant"].includes(user.role);
-  const hasFilters = !!(search || statusFilter || deptFilter || catFilter);
+  const hasFilters = !!(search || effStatus || effDept || effCat);
 
   // Расшифровка отбора для диалога печати: печатать «всё по фильтру»,
   // не видя, какой он, — верный способ извести ленту впустую
   const filtersLabel = [
     search && `поиск «${search}»`,
-    statusFilter && `статус «${ASSET_STATUS_LABELS[statusFilter as AssetStatus]}»`,
-    deptFilter && `подразделение «${depts?.find(d => d.id === deptFilter)?.name ?? "—"}»`,
-    catFilter && `категория «${catFilter}»`,
+    effStatus && `статус «${ASSET_STATUS_LABELS[effStatus as AssetStatus]}»`,
+    effDept && `подразделение «${depts?.find(d => d.id === effDept)?.name ?? "—"}»`,
+    effCat && `категория «${effCat}»`,
   ].filter(Boolean).join(", ") || null;
 
   return (
@@ -117,6 +185,15 @@ export default function AssetsPage() {
           icon={<Printer className="w-3.5 h-3.5" />}
         >
           Наклейки{selected.length > 0 ? ` (${selected.length})` : ""}
+        </Button>
+
+        {/* Состав и порядок колонок — настройка своя у каждого пользователя */}
+        <Button
+          variant="secondary" size="sm"
+          onClick={() => setColumnsDialog(true)}
+          icon={<Settings2 className="w-3.5 h-3.5" />}
+        >
+          Колонки
         </Button>
 
         {/* Excel export */}
@@ -163,30 +240,37 @@ export default function AssetsPage() {
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
               />
             </div>
-            <select
-              className="input w-44"
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-            >
-              <option value="">Все статусы</option>
-              {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <select
-              className="input w-52"
-              value={deptFilter}
-              onChange={e => { setDeptFilter(e.target.value); setPage(1); }}
-            >
-              <option value="">Все подразделения</option>
-              {depts?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-            <select
-              className="input w-44"
-              value={catFilter}
-              onChange={e => { setCatFilter(e.target.value); setPage(1); }}
-            >
-              <option value="">Все категории</option>
-              {ASSET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {/* Фильтр живёт ровно столько, сколько его колонка на экране */}
+            {filters.has("status") && (
+              <select
+                className="input w-44"
+                value={statusFilter}
+                onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+              >
+                <option value="">Все статусы</option>
+                {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            )}
+            {filters.has("department") && (
+              <select
+                className="input w-52"
+                value={deptFilter}
+                onChange={e => { setDeptFilter(e.target.value); setPage(1); }}
+              >
+                <option value="">Все подразделения</option>
+                {depts?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            )}
+            {filters.has("category") && (
+              <select
+                className="input w-44"
+                value={catFilter}
+                onChange={e => { setCatFilter(e.target.value); setPage(1); }}
+              >
+                <option value="">Все категории</option>
+                {ASSET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
             {hasFilters && (
               <Button
                 variant="ghost" size="sm"
@@ -249,17 +333,14 @@ export default function AssetsPage() {
                         />
                       </th>
                     )}
-                    <th className="th">Инв. номер</th>
-                    <th className="th">Наименование</th>
-                    <th className="th hidden lg:table-cell">Категория</th>
-                    <th className="th hidden md:table-cell">Подразделение</th>
-                    <th className="th hidden lg:table-cell">Ответственный</th>
-                    {/* Владелец показывается раньше остальных необязательных
-                        колонок: из полей о людях заполнено только оно */}
-                    <th className="th hidden md:table-cell">Владелец</th>
-                    <th className="th hidden xl:table-cell text-right">Стоимость, ₸</th>
-                    <th className="th">Статус</th>
-                    <th className="th text-right">Действия</th>
+                    {columns.map(col => (
+                      <th
+                        key={col.key}
+                        className={`th ${BREAKPOINT_CLASS[col.breakpoint]} ${col.align === "right" ? "text-right" : ""}`}
+                      >
+                        {col.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-slate-800/60">
@@ -267,15 +348,13 @@ export default function AssetsPage() {
                     ? Array(8).fill(0).map((_, i) => (
                       <tr key={i}>
                         {canManage && <td className="px-4 py-3.5"><div className="skeleton h-4 w-4 rounded" /></td>}
-                        <td className="td"><div className="skeleton h-4 w-24" /></td>
-                        <td className="td"><div className="skeleton h-4 w-48" /></td>
-                        <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-24" /></td>
-                        <td className="td hidden md:table-cell"><div className="skeleton h-4 w-32" /></td>
-                        <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-32" /></td>
-                        <td className="td hidden md:table-cell"><div className="skeleton h-4 w-28" /></td>
-                        <td className="td hidden xl:table-cell"><div className="skeleton h-4 w-20" /></td>
-                        <td className="td"><div className="skeleton h-5 w-20 rounded-full" /></td>
-                        <td className="td" />
+                        {columns.map(col => (
+                          <td key={col.key} className={`td ${BREAKPOINT_CLASS[col.breakpoint]}`}>
+                            {SKELETON_CLASS[col.key] && (
+                              <div className={`skeleton ${SKELETON_CLASS[col.key]}`} />
+                            )}
+                          </td>
+                        ))}
                       </tr>
                     ))
                     : data?.data?.map((asset: Asset) => (
@@ -294,36 +373,17 @@ export default function AssetsPage() {
                             />
                           </td>
                         )}
-                        <td className="td font-mono text-xs text-gray-500 dark:text-slate-400">
-                          {asset.inventoryNumber}
-                        </td>
-                        <td className="td font-semibold text-gray-900 dark:text-white max-w-xs truncate">
-                          {asset.name}
-                        </td>
-                        <td className="td text-gray-500 dark:text-slate-400 hidden lg:table-cell">
-                          {asset.category || "—"}
-                        </td>
-                        <td className="td text-gray-500 dark:text-slate-400 hidden md:table-cell">
-                          {asset.departmentName || "—"}
-                        </td>
-                        <td className="td text-gray-500 dark:text-slate-400 hidden lg:table-cell">
-                          {asset.responsiblePerson || "—"}
-                        </td>
-                        <td className="td text-gray-500 dark:text-slate-400 hidden md:table-cell max-w-[12rem] truncate">
-                          {asset.ownerName || "—"}
-                        </td>
-                        <td className="td text-right text-gray-600 dark:text-slate-400 hidden xl:table-cell tabular-nums">
-                          {Number(asset.residualValue).toLocaleString("ru-RU")}
-                        </td>
-                        <td className="td"><AssetStatusBadge status={asset.status} /></td>
-                        <td className="td text-right" onClick={e => e.stopPropagation()}>
-                          <Button
-                            variant="ghost" size="xs"
-                            onClick={() => router.push(`/assets/${asset.id}`)}
+                        {columns.map(col => (
+                          <td
+                            key={col.key}
+                            className={`td ${BREAKPOINT_CLASS[col.breakpoint]} ${CELL_CLASS[col.key] ?? "text-gray-500 dark:text-slate-400"}`}
+                            // Кнопка «Открыть» не должна ещё раз открывать
+                            // карточку через клик по строке
+                            onClick={col.key === "actions" ? e => e.stopPropagation() : undefined}
                           >
-                            Открыть
-                          </Button>
-                        </td>
+                            {renderCell(col.key, asset)}
+                          </td>
+                        ))}
                       </tr>
                     ))
                   }
@@ -356,6 +416,8 @@ export default function AssetsPage() {
       </div>
 
       {/* Bulk status modal */}
+      <ColumnSettingsDialog open={columnsDialog} onClose={() => setColumnsDialog(false)} />
+
       <Modal open={bulkModal} onClose={() => setBulkModal(false)} title={`Изменить статус (${selected.length} ОС)`}>
         <div className="space-y-5">
           <div>
@@ -377,7 +439,7 @@ export default function AssetsPage() {
       {labelsDialog && (
         <BulkLabelDialog
           selectedIds={selected}
-          filters={{ search: debouncedSearch, status: statusFilter, departmentId: deptFilter, category: catFilter }}
+          filters={{ search: debouncedSearch, status: effStatus, departmentId: effDept, category: effCat }}
           totalByFilters={data?.total ?? 0}
           filtersLabel={filtersLabel}
           onClose={() => setLabelsDialog(false)}
