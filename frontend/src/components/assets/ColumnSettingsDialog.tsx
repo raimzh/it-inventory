@@ -114,10 +114,14 @@ export function ColumnSettingsDialog({ open, onClose }: { open: boolean; onClose
                     on ? "bg-primary-600" : "bg-gray-200 dark:bg-slate-700",
                   ].join(" ")}
                 >
+                  {/* left-0 обязателен. Без него absolute считается от
+                      статической позиции, а button центрирует содержимое —
+                      кружок уезжал вправо и вылезал за дорожку на треть
+                      своей ширины */}
                   <span
                     className={[
-                      "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform",
-                      on ? "translate-x-4" : "translate-x-0.5",
+                      "absolute left-0 top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform",
+                      on ? "translate-x-[1.125rem]" : "translate-x-0.5",
                     ].join(" ")}
                   />
                 </button>
