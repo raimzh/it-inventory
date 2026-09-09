@@ -254,6 +254,9 @@ export default function AssetsPage() {
                     <th className="th hidden lg:table-cell">Категория</th>
                     <th className="th hidden md:table-cell">Подразделение</th>
                     <th className="th hidden lg:table-cell">Ответственный</th>
+                    {/* Владелец показывается раньше остальных необязательных
+                        колонок: из полей о людях заполнено только оно */}
+                    <th className="th hidden md:table-cell">Владелец</th>
                     <th className="th hidden xl:table-cell text-right">Стоимость, ₸</th>
                     <th className="th">Статус</th>
                     <th className="th text-right">Действия</th>
@@ -269,6 +272,7 @@ export default function AssetsPage() {
                         <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-24" /></td>
                         <td className="td hidden md:table-cell"><div className="skeleton h-4 w-32" /></td>
                         <td className="td hidden lg:table-cell"><div className="skeleton h-4 w-32" /></td>
+                        <td className="td hidden md:table-cell"><div className="skeleton h-4 w-28" /></td>
                         <td className="td hidden xl:table-cell"><div className="skeleton h-4 w-20" /></td>
                         <td className="td"><div className="skeleton h-5 w-20 rounded-full" /></td>
                         <td className="td" />
@@ -304,6 +308,9 @@ export default function AssetsPage() {
                         </td>
                         <td className="td text-gray-500 dark:text-slate-400 hidden lg:table-cell">
                           {asset.responsiblePerson || "—"}
+                        </td>
+                        <td className="td text-gray-500 dark:text-slate-400 hidden md:table-cell max-w-[12rem] truncate">
+                          {asset.ownerName || "—"}
                         </td>
                         <td className="td text-right text-gray-600 dark:text-slate-400 hidden xl:table-cell tabular-nums">
                           {Number(asset.residualValue).toLocaleString("ru-RU")}
