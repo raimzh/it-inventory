@@ -22,6 +22,12 @@
 param(
     # По умолчанию берётся адрес интерфейса, через который машина ходит в сеть
     [string]$IpAddress = "",
+    # Дополнительные адреса в сертификат. Адрес в локальной сети выдаётся по
+    # DHCP и уже трижды менялся, после чего сертификат переставал подходить и
+    # сайт «переставал работать». Адрес Tailscale закреплён за машиной, поэтому
+    # он подхватывается сюда автоматически: даже когда локальный адрес уедет,
+    # останется работающий путь, по которому не надо ничего перевыпускать.
+    [string[]]$ExtraIps = @(),
     [int]$Days = 825,
     # Перевыпустить корневой. ВНИМАНИЕ: после этого все устройства
     # придётся обходить заново
@@ -59,6 +65,15 @@ if (-not $IpAddress) {
     exit 1
 }
 
+# Адрес Tailscale (сеть 100.64.0.0/10) — он за машиной закреплён и живёт
+# дольше, чем выданный по DHCP. В сертификат идёт всегда, если найден
+$tailscale = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -match '^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\.' } |
+    Select-Object -ExpandProperty IPAddress
+
+$allIps = @($IpAddress) + @($tailscale) + @($ExtraIps) + @('127.0.0.1') |
+    Where-Object { $_ } | Select-Object -Unique
+
 $hostName = $env:COMPUTERNAME
 New-Item -ItemType Directory -Force -Path $certDir | Out-Null
 
@@ -83,7 +98,7 @@ if (-not (Test-Path $caCrt)) {
     Write-Host "   устройства, которым он установлен, переделывать не нужно."
 }
 
-Write-Host "== Серверный сертификат для $IpAddress ==" -ForegroundColor Cyan
+Write-Host "== Серверный сертификат для: $($allIps -join ', ') ==" -ForegroundColor Cyan
 
 $csr  = Join-Path $certDir "server.csr"
 $ext  = Join-Path $certDir "server.ext"
@@ -93,7 +108,7 @@ $crt  = Join-Path $certDir "server.crt"
 # Браузеры давно не смотрят на CN — адрес обязан быть в subjectAltName.
 # localhost и 127.0.0.1 здесь для проверок с самой машины
 @"
-subjectAltName = IP:$IpAddress, IP:127.0.0.1, DNS:localhost, DNS:$hostName
+subjectAltName = $(($allIps | ForEach-Object { "IP:$_" }) -join ', '), DNS:localhost, DNS:$hostName
 basicConstraints = critical, CA:FALSE
 keyUsage = critical, digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth

@@ -20,11 +20,12 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText: string) => {
-          // Parse INV:XXX|ID:YYY format
-          const match = decodedText.match(/INV:([^|]+)/);
-          const invNumber = match ? match[1] : decodedText;
-          onScan(invNumber);
-          scanner.stop();
+          // Код отдаётся как есть, без разбора: форматов этикеток два
+          // (INV:номер|ID:uuid у ОС и SKU:артикул|ID:uuid у склада), и
+          // разбирает их parseScanCode. Своя копия логики здесь уже была
+          // и понимала только первый формат
+          onScan(decodedText);
+          scanner.stop().catch(() => {});
         },
         () => {}
       ).catch((err: any) => setError(`Ошибка камеры: ${err}`));
