@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
+import { QRScanner } from "@/components/inventory/QRScanner";
 import { Modal } from "@/components/ui/Modal";
 import { AssetStatusBadge } from "@/components/ui/Badge";
 import { InventorySession, InventoryItem, ASSET_STATUS_LABELS, AssetStatus } from "@/types";
@@ -13,7 +14,7 @@ import { feedback } from "@/lib/feedback";
 import { parseScanCode, stripLeadingZeros } from "@/lib/scan-code";
 import { useScannerPrefs } from "@/store/scanner-prefs.store";
 import {
-  Plus, ScanLine, CheckCircle2, XCircle, ClipboardList, Lock, AlertTriangle,
+  Plus, ScanLine, CheckCircle2, XCircle, ClipboardList, Lock, AlertTriangle, Camera,
   Volume2, VolumeX, RotateCcw, Keyboard,
 } from "lucide-react";
 
@@ -68,6 +69,8 @@ export default function InventoryPage() {
   const [counter, setCounter] = useState(0);
   const [manual, setManual] = useState("");
   const [armed, setArmed] = useState(false);
+  // Сканирование камерой — для планшетов без аппаратного сканера
+  const [cameraOpen, setCameraOpen] = useState(false);
   const bannerTimer = useRef<number | undefined>(undefined);
 
   const { data: sessionsData } = useQuery({
@@ -407,6 +410,17 @@ export default function InventoryPage() {
                         onClick={() => { handleCode(manual.trim()); setManual(""); }}>
                         Отметить
                       </Button>
+                      {/* Камера: на планшетах без лазерного сканера это
+                          единственный способ считать этикетку. Аппаратный
+                          сканер при этом продолжает работать как раньше */}
+                      <button
+                        onClick={() => setCameraOpen(true)}
+                        className="btn-secondary"
+                        title="Сканировать камерой"
+                        aria-label="Сканировать камерой"
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
                       <button onClick={() => setMuted(!muted)} className="btn-secondary" title="Звук">
                         {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                       </button>
@@ -515,6 +529,18 @@ export default function InventoryPage() {
           </div>
         )}
       </div>
+
+      {/* Камера отдаёт код в тот же обработчик, что и аппаратный сканер,
+          поэтому отметка, звук, журнал и очередь при отсутствии сети
+          работают одинаково — отдельной ветки для камеры нет */}
+      <Modal open={cameraOpen} onClose={() => setCameraOpen(false)} title="Сканирование камерой">
+        {cameraOpen && (
+          <QRScanner
+            onScan={code => { setCameraOpen(false); handleCode(code); }}
+            onClose={() => setCameraOpen(false)}
+          />
+        )}
+      </Modal>
 
       <Modal open={newModal} onClose={() => setNewModal(false)} title="Новая сессия инвентаризации">
         <div className="space-y-4">
