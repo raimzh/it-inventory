@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { QueryProvider } from "@/components/layout/QueryProvider";
+import { ServiceWorkerRegistrar } from "@/components/layout/ServiceWorkerRegistrar";
 
 const inter = Inter({
   subsets: ["latin", "cyrillic"],
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ru" className={inter.variable} suppressHydrationWarning>
       <body>
+        <ServiceWorkerRegistrar />
         <ThemeProvider>
           <QueryProvider>
             {children}

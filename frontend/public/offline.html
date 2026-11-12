@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Нет связи — IT Inventory</title>
+<!--
+  Страница на случай обрыва сети. Намеренно без единой внешней ссылки:
+  её показывает сервис-воркер именно тогда, когда ничего скачать нельзя,
+  поэтому стили, шрифт и разметка — здесь же.
+
+  Текст сознательно говорит про Wi-Fi: на складе и в кабинетах сеть
+  пропадает в коридорах, и чаще всего человеку надо просто отойти на шаг
+  назад, а не звонить в IT.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    font: 16px/1.55 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    background: #f9fafb; color: #111827;
+  }
+  .card {
+    width: 100%; max-width: 26rem; text-align: center;
+  }
+  .mark {
+    width: 64px; height: 64px; margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 18px; background: #ede9fe;
+  }
+  .mark svg { width: 32px; height: 32px; stroke: #7c3aed; }
+  h1 { margin: 0 0 10px; font-size: 1.35rem; font-weight: 650; }
+  p { margin: 0 0 8px; color: #4b5563; }
+  ul {
+    margin: 18px 0 24px; padding: 0; list-style: none;
+    text-align: left; color: #4b5563; font-size: 0.94rem;
+  }
+  li { position: relative; padding: 4px 0 4px 20px; }
+  li::before {
+    content: ""; position: absolute; left: 4px; top: 13px;
+    width: 5px; height: 5px; border-radius: 50%; background: #a78bfa;
+  }
+  button {
+    width: 100%; padding: 13px 20px; font: inherit; font-weight: 550;
+    color: #fff; background: #7c3aed; border: 0; border-radius: 12px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  button:active { background: #6d28d9; }
+  .hint { margin-top: 14px; font-size: 0.82rem; color: #9ca3af; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #020617; color: #e5e7eb; }
+    .mark { background: #2e1065; }
+    p, ul { color: #9ca3af; }
+    .hint { color: #6b7280; }
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M1 1l22 22"></path>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+        <path d="M12 20h.01"></path>
+      </svg>
+    </div>
+    <h1>Нет связи с сервером</h1>
+    <p>Страница не открылась: сервер инвентаризации не отвечает.</p>
+    <ul>
+      <li>Проверьте, что планшет подключён к рабочей сети Wi-Fi</li>
+      <li>В коридорах и на складе сигнал пропадает — отойдите на пару шагов и повторите</li>
+      <li>Если сеть есть, а страница не открывается — сервер инвентаризации недоступен, сообщите в IT</li>
+    </ul>
+    <button type="button" onclick="location.reload()">Повторить</button>
+    <p class="hint">Отсканированное без связи не сохраняется — повторите после подключения.</p>
+  </div>
+</body>
+</html>
