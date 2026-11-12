@@ -121,6 +121,8 @@ export const inventoryApi = {
   getSessionItems: (id: string, params?: any) =>
     api.get(`/inventory/sessions/${id}/items`, { params }),
   createSession: (data: any) => api.post("/inventory/sessions", data),
+  updateSession: (id: string, data: { name?: string; description?: string }) =>
+    api.patch(`/inventory/sessions/${id}`, data),
   checkItem: (sessionId: string, assetId: string, data: any) =>
     api.patch(`/inventory/sessions/${sessionId}/items/${assetId}`, data),
   scanByInventoryNumber: (sessionId: string, data: any) =>

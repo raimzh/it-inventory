@@ -14,7 +14,7 @@ import { feedback } from "@/lib/feedback";
 import { parseScanCode, stripLeadingZeros } from "@/lib/scan-code";
 import { useScannerPrefs } from "@/store/scanner-prefs.store";
 import {
-  Plus, ScanLine, CheckCircle2, XCircle, ClipboardList, Lock, AlertTriangle, Camera,
+  Plus, ScanLine, CheckCircle2, XCircle, ClipboardList, Lock, AlertTriangle, Camera, Pencil,
   Volume2, VolumeX, RotateCcw, Keyboard,
 } from "lucide-react";
 
@@ -71,6 +71,11 @@ export default function InventoryPage() {
   const [armed, setArmed] = useState(false);
   // Сканирование камерой — для планшетов без аппаратного сканера
   const [cameraOpen, setCameraOpen] = useState(false);
+  // Правка названия и описания. Отдельные поля от полей создания: пока
+  // правят одну сессию, форма новой не должна оказаться заполненной
+  const [editModal, setEditModal] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
   const bannerTimer = useRef<number | undefined>(undefined);
 
   const { data: sessionsData } = useQuery({
@@ -262,6 +267,22 @@ export default function InventoryPage() {
     mutationFn: (id: string) => inventoryApi.closeSession(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory-sessions"] }),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: (id: string) =>
+      inventoryApi.updateSession(id, { name: editName.trim(), description: editDesc }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inventory-sessions"] });
+      setEditModal(false);
+    },
+  });
+
+  /** Открыть правку с подставленными текущими значениями */
+  const startEdit = () => {
+    setEditName(currentSession?.name || "");
+    setEditDesc(currentSession?.description || "");
+    setEditModal(true);
+  };
 
   const bannerStyle: Record<BannerKind, string> = {
     success: "bg-emerald-500 text-white",
@@ -482,13 +503,22 @@ export default function InventoryPage() {
                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                   Позиции <span className="text-gray-400 font-normal">({items.length})</span>
                 </h3>
-                {canClose && sessionOpen && (
-                  <Button variant="secondary" size="sm" loading={closeMutation.isPending}
-                    icon={<Lock className="w-3.5 h-3.5" />}
-                    onClick={() => closeMutation.mutate(activeSession)}>
-                    Закрыть сессию
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {canEdit && sessionOpen && (
+                    <Button variant="secondary" size="sm"
+                      icon={<Pencil className="w-3.5 h-3.5" />}
+                      onClick={startEdit}>
+                      Изменить
+                    </Button>
+                  )}
+                  {canClose && sessionOpen && (
+                    <Button variant="secondary" size="sm" loading={closeMutation.isPending}
+                      icon={<Lock className="w-3.5 h-3.5" />}
+                      onClick={() => closeMutation.mutate(activeSession)}>
+                      Закрыть сессию
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
                 <table className="w-full text-sm">
@@ -540,6 +570,32 @@ export default function InventoryPage() {
             onClose={() => setCameraOpen(false)}
           />
         )}
+      </Modal>
+
+      {/* Правка только названия и описания: состав сессии — снимок на
+          момент создания, и менять его задним числом нельзя. Для закрытой
+          сессии кнопка не показывается, а сервер отвечает на неё 409 */}
+      <Modal open={editModal} onClose={() => setEditModal(false)} title="Изменить сессию">
+        <div className="space-y-4">
+          <div>
+            <label className="label">Название *</label>
+            <input className="input" value={editName} onChange={e => setEditName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className="label">Описание</label>
+            <textarea className="input h-20 resize-none" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+          </div>
+          {updateMutation.isError && (
+            <p className="text-xs text-red-600 dark:text-red-400">Не удалось сохранить. Обновите страницу и попробуйте снова.</p>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setEditModal(false)}>Отмена</Button>
+            <Button loading={updateMutation.isPending} disabled={!editName.trim()}
+              onClick={() => activeSession && updateMutation.mutate(activeSession)}>
+              Сохранить
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal open={newModal} onClose={() => setNewModal(false)} title="Новая сессия инвентаризации">
