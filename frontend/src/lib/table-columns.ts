@@ -75,21 +75,60 @@ export const BREAKPOINT_HINT: Record<Breakpoint, string> = {
 };
 
 /**
- * Местоположение по умолчанию скрыто: поле заполнено у единиц записей, а
- * таблица и без него упирается в ширину экрана. Кому нужно — включит.
+ * Колонки, скрытые по умолчанию: поле заполнено у единиц записей из 380, а
+ * таблица и без них упирается в ширину экрана. Кому нужно — включит.
+ *
+ * Скрытие «Категории» убирает и фильтр по категории — так устроено
+ * намеренно (см. AssetColumn.filter). При трёх заполненных записях из 380
+ * этот фильтр и так ничего не отбирал, но знать об этом стоит.
  */
-export const DEFAULT_HIDDEN = ["location"];
+export const DEFAULT_HIDDEN = ["category", "responsiblePerson", "location"];
+
+/**
+ * Версия набора скрытых по умолчанию колонок.
+ *
+ * Нужна вот зачем. Сохранённая настройка хранит СПИСОК скрытых колонок,
+ * а не «пользуюсь стандартным набором». Поэтому у того, кто однажды
+ * открывал окно настройки, лежит hidden: ["location"], и новый набор по
+ * умолчанию его таблицу не изменит: правка выглядела бы сделанной, а на
+ * складе колонки остались бы на месте.
+ *
+ * Версия позволяет дослать новые скрытия один раз. Цена честная и её
+ * надо назвать: если человек СОЗНАТЕЛЬНО включил «Ответственного», при
+ * переходе на версию 2 колонка у него скроется. Он включит её снова — и
+ * больше она не пропадёт, потому что версия в его настройке станет
+ * текущей. Одноразовая неприятность, которую видно и легко отменить.
+ */
+export const DEFAULT_HIDDEN_VERSION = 2;
+
+/**
+ * Что добавилось в скрытое по умолчанию в каждой версии.
+ *
+ * Только добавления: «показать обратно» здесь не выражается — вернуть
+ * колонку всем насильно значило бы перебить чужой выбор без возможности
+ * отличить его от значения по умолчанию.
+ */
+const HIDDEN_SINCE: Record<number, readonly string[]> = {
+  2: ["category", "responsiblePerson"],
+};
 
 export interface ColumnConfig {
   /** Ключи в порядке отображения */
   order: string[];
   /** Ключи скрытых колонок */
   hidden: string[];
+  /**
+   * Версия набора скрытого по умолчанию, под которую настройка приведена.
+   * Отсутствует у настроек, сохранённых до появления версий, — такие
+   * считаются первой версией.
+   */
+  hiddenVersion?: number;
 }
 
 export const DEFAULT_CONFIG: ColumnConfig = {
   order: ASSET_COLUMNS.map(c => c.key),
   hidden: [...DEFAULT_HIDDEN],
+  hiddenVersion: DEFAULT_HIDDEN_VERSION,
 };
 
 const byKey = new Map(ASSET_COLUMNS.map(c => [c.key, c]));
@@ -137,10 +176,39 @@ export function resolveOrder(saved?: readonly string[] | null): AssetColumn[] {
   return result;
 }
 
+/**
+ * Сохранённая настройка, приведённая к текущему коду: порядок — к набору
+ * колонок, скрытое — к текущей версии скрытого по умолчанию.
+ *
+ * Применяется и при ЧТЕНИИ, а не только при записи. Иначе новое скрытие
+ * доезжало бы до человека лишь после того, как он сам что-нибудь
+ * переключит, — то есть у большинства никогда.
+ */
+export function migrateConfig(config?: Partial<ColumnConfig> | null): ColumnConfig {
+  const order = resolveOrder(config?.order).map(c => c.key);
+  const hidden = new Set((config?.hidden ?? DEFAULT_HIDDEN).filter(k => byKey.has(k)));
+
+  // Настройки нет вовсе — DEFAULT_HIDDEN выше уже дал текущий набор,
+  // досылать ничего не нужно
+  const from = config ? (config.hiddenVersion ?? 1) : DEFAULT_HIDDEN_VERSION;
+  for (let v = from + 1; v <= DEFAULT_HIDDEN_VERSION; v++) {
+    for (const key of HIDDEN_SINCE[v] ?? []) if (byKey.has(key)) hidden.add(key);
+  }
+
+  return {
+    order,
+    // В порядке отображения, а не в порядке добавления: так список
+    // скрытого читается так же, как таблица
+    hidden: order.filter(k => hidden.has(k)),
+    hiddenVersion: DEFAULT_HIDDEN_VERSION,
+  };
+}
+
 /** Колонки, которые попадут в таблицу, в нужном порядке. */
 export function visibleColumns(config?: Partial<ColumnConfig> | null): AssetColumn[] {
-  const hidden = new Set(config?.hidden ?? DEFAULT_HIDDEN);
-  return resolveOrder(config?.order).filter(c => !hidden.has(c.key));
+  const { order, hidden } = migrateConfig(config);
+  const hiddenSet = new Set(hidden);
+  return order.map(k => byKey.get(k)!).filter(c => !hiddenSet.has(c.key));
 }
 
 /** Фильтры, которые имеет смысл показывать при текущем наборе колонок. */
@@ -150,13 +218,6 @@ export function activeFilters(config?: Partial<ColumnConfig> | null): Set<string
   return set;
 }
 
-function normalize(config?: Partial<ColumnConfig> | null): ColumnConfig {
-  return {
-    order: resolveOrder(config?.order).map(c => c.key),
-    hidden: (config?.hidden ?? DEFAULT_HIDDEN).filter(k => byKey.has(k)),
-  };
-}
-
 /**
  * Показать/скрыть колонку.
  *
@@ -164,7 +225,7 @@ function normalize(config?: Partial<ColumnConfig> | null): ColumnConfig {
  * поломка, а вернуть колонку было бы уже неоткуда, кроме сброса настроек.
  */
 export function toggleColumn(config: Partial<ColumnConfig> | null | undefined, key: string): ColumnConfig {
-  const next = normalize(config);
+  const next = migrateConfig(config);
   if (!byKey.has(key)) return next;
 
   const hidden = new Set(next.hidden);
@@ -183,7 +244,7 @@ export function moveColumn(
   key: string,
   direction: -1 | 1,
 ): ColumnConfig {
-  const next = normalize(config);
+  const next = migrateConfig(config);
   const from = next.order.indexOf(key);
   const to = from + direction;
   if (from < 0 || to < 0 || to >= next.order.length) return next;
@@ -199,7 +260,7 @@ export function reorderColumns(
   fromKey: string,
   toKey: string,
 ): ColumnConfig {
-  const next = normalize(config);
+  const next = migrateConfig(config);
   const from = next.order.indexOf(fromKey);
   const to = next.order.indexOf(toKey);
   if (from < 0 || to < 0 || from === to) return next;
@@ -211,7 +272,7 @@ export function reorderColumns(
 
 /** Отличается ли настройка от стандартной — чтобы не предлагать пустой сброс. */
 export function isCustomized(config?: Partial<ColumnConfig> | null): boolean {
-  const next = normalize(config);
+  const next = migrateConfig(config);
   const sameOrder = next.order.join() === DEFAULT_CONFIG.order.join();
   const sameHidden = [...next.hidden].sort().join() === [...DEFAULT_CONFIG.hidden].sort().join();
   return !(sameOrder && sameHidden);

@@ -19,7 +19,8 @@ const assert = require('node:assert/strict');
 
 const {
   ASSET_COLUMNS, DEFAULT_CONFIG, DEFAULT_HIDDEN,
-  resolveOrder, visibleColumns, activeFilters,
+  DEFAULT_HIDDEN_VERSION,
+  resolveOrder, visibleColumns, activeFilters, migrateConfig,
   toggleColumn, moveColumn, reorderColumns, isCustomized,
 } = require('../src/lib/table-columns.ts');
 
@@ -87,19 +88,23 @@ test('скрытые колонки не попадают в таблицу, н�
 // --- Переключение ---------------------------------------------------------
 
 test('колонка скрывается и возвращается', () => {
-  let cfg = toggleColumn(DEFAULT_CONFIG, 'category');
-  assert.ok(cfg.hidden.includes('category'));
-  assert.ok(!keys(visibleColumns(cfg)).includes('category'));
+  // Колонка, видимая по умолчанию: у скрытых по умолчанию первое
+  // переключение наоборот ПОКАЗЫВАЕТ, и проверка вышла бы о другом
+  let cfg = toggleColumn(DEFAULT_CONFIG, 'ownerName');
+  assert.ok(cfg.hidden.includes('ownerName'));
+  assert.ok(!keys(visibleColumns(cfg)).includes('ownerName'));
 
-  cfg = toggleColumn(cfg, 'category');
-  assert.ok(!cfg.hidden.includes('category'));
-  assert.ok(keys(visibleColumns(cfg)).includes('category'));
+  cfg = toggleColumn(cfg, 'ownerName');
+  assert.ok(!cfg.hidden.includes('ownerName'));
+  assert.ok(keys(visibleColumns(cfg)).includes('ownerName'));
 });
 
 test('последнюю видимую колонку скрыть нельзя', () => {
   // Пустая таблица неотличима от поломки, а вернуть колонку было бы
   // неоткуда, кроме сброса настроек
-  let cfg = { order: DEFAULT_CONFIG.order, hidden: [] };
+  // Версию указываем явно: иначе досылка скрытого по умолчанию сама
+  // спрячет часть колонок, и проверка будет уже не про запрет
+  let cfg = { order: DEFAULT_CONFIG.order, hidden: [], hiddenVersion: DEFAULT_HIDDEN_VERSION };
   for (const col of ASSET_COLUMNS) cfg = toggleColumn(cfg, col.key);
 
   assert.equal(visibleColumns(cfg).length, 1, 'одна колонка обязана остаться');
@@ -151,16 +156,24 @@ test('перенос на самого себя и на неизвестный �
 test('скрытая колонка убирает свой фильтр', () => {
   // Фильтровать по тому, чего не видно, — верный способ получить
   // «куда делись записи»
-  assert.ok(activeFilters(DEFAULT_CONFIG).has('category'));
+  assert.ok(activeFilters(DEFAULT_CONFIG).has('department'));
 
-  const cfg = toggleColumn(DEFAULT_CONFIG, 'category');
-  assert.ok(!activeFilters(cfg).has('category'));
+  const cfg = toggleColumn(DEFAULT_CONFIG, 'departmentName');
+  assert.ok(!activeFilters(cfg).has('department'));
   assert.ok(activeFilters(cfg).has('status'), 'остальные фильтры на месте');
 });
 
 test('колонки без фильтра его и не добавляют', () => {
   const f = activeFilters(DEFAULT_CONFIG);
-  assert.deepEqual([...f].sort(), ['category', 'department', 'status']);
+  assert.deepEqual([...f].sort(), ['department', 'status']);
+});
+
+test('фильтр по категории возвращается вместе с колонкой', () => {
+  // Категория скрыта по умолчанию, значит и фильтра по ней сразу нет.
+  // Но включивший колонку должен получить фильтр обратно
+  assert.ok(!activeFilters(DEFAULT_CONFIG).has('category'));
+  const cfg = toggleColumn(DEFAULT_CONFIG, 'category');
+  assert.ok(activeFilters(cfg).has('category'));
 });
 
 // --- Сброс ----------------------------------------------------------------
@@ -170,4 +183,79 @@ test('изменённая настройка отличается от стан
   assert.equal(isCustomized(null), false);
   assert.equal(isCustomized(toggleColumn(DEFAULT_CONFIG, 'category')), true);
   assert.equal(isCustomized(moveColumn(DEFAULT_CONFIG, 'category', 1)), true);
+});
+
+// --- Досылка новых скрытий тем, у кого настройка уже сохранена ------------
+//
+// Это главное место этого набора. Сохранённая настройка хранит СПИСОК
+// скрытых колонок, а не «пользуюсь стандартным набором», поэтому новый
+// набор по умолчанию сам собой до человека не доезжает. Без досылки
+// правка выглядела бы сделанной, а на складе ничего бы не изменилось.
+
+test('старой настройке досылаются новые скрытые колонки', () => {
+  // Так выглядит настройка, сохранённая до появления версий: человек
+  // всего лишь переставил колонки, про категорию он решения не принимал
+  const saved = {
+    order: ['inventoryNumber', 'name', 'status', 'category', 'responsiblePerson', 'actions'],
+    hidden: ['location'],
+  };
+  const got = migrateConfig(saved);
+  assert.ok(got.hidden.includes('category'));
+  assert.ok(got.hidden.includes('responsiblePerson'));
+  assert.equal(got.hiddenVersion, DEFAULT_HIDDEN_VERSION);
+});
+
+test('порядок при досылке не ломается', () => {
+  // Скрытие не должно превращаться в перестановку: человек расставил
+  // колонки сам, и возврат скрытой колонки обязан вернуть её на место
+  const saved = { order: ['status', 'name', 'inventoryNumber', 'actions'], hidden: [] };
+  const got = migrateConfig(saved);
+  // Между сохранёнными колонками встанут те, которых в настройке не было
+  // (так и задумано), поэтому сверяем ОТНОСИТЕЛЬНЫЙ порядок
+  const mine = got.order.filter(k => saved.order.includes(k));
+  assert.deepEqual(mine, saved.order);
+});
+
+test('повторная досылка чужой выбор не перебивает', () => {
+  // Человек вернул «Ответственного» себе в таблицу. Версия в его
+  // настройке уже текущая, значит колонку больше не скрываем —
+  // иначе она пропадала бы при каждом заходе
+  const chosen = migrateConfig({ order: null, hidden: ['location'], hiddenVersion: DEFAULT_HIDDEN_VERSION });
+  assert.ok(!chosen.hidden.includes('responsiblePerson'));
+  assert.ok(!chosen.hidden.includes('category'));
+
+  // и после второго прохода тоже
+  assert.deepEqual(migrateConfig(chosen).hidden, chosen.hidden);
+});
+
+test('включённая колонка остаётся включённой', () => {
+  const cfg = toggleColumn(DEFAULT_CONFIG, 'responsiblePerson');
+  assert.ok(visibleColumns(cfg).some(c => c.key === 'responsiblePerson'));
+  // Повторное чтение той же настройки колонку не отбирает
+  assert.ok(visibleColumns(migrateConfig(cfg)).some(c => c.key === 'responsiblePerson'));
+});
+
+test('отсутствие настройки даёт текущий набор скрытого', () => {
+  for (const empty of [undefined, null]) {
+    const got = migrateConfig(empty);
+    assert.deepEqual([...got.hidden].sort(), [...DEFAULT_HIDDEN].sort());
+  }
+});
+
+test('таблица не остаётся без колонок', () => {
+  // Пустая таблица выглядит как поломка. Проверяем на пустой настройке и
+  // на старой сохранённой: досылка не должна выесть всё
+  for (const cfg of [null, { order: null, hidden: ['location'] }]) {
+    const keysLeft = visibleColumns(cfg).map(c => c.key);
+    assert.ok(keysLeft.includes('inventoryNumber'), 'инв. номер обязателен');
+    assert.ok(keysLeft.includes('name'));
+    assert.ok(keysLeft.includes('status'));
+    assert.ok(keysLeft.includes('actions'));
+  }
+});
+
+test('неизвестный ключ в досылаемом скрытии не попадает в настройку', () => {
+  // Колонку могут убрать из кода позже, чем из HIDDEN_SINCE
+  const got = migrateConfig({ order: null, hidden: ['колонки-такой-нет'] });
+  assert.ok(!got.hidden.includes('колонки-такой-нет'));
 });
