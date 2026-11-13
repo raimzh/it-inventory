@@ -6,7 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SessionStatus } from './entities/inventory-session.entity';
-import { CheckItemDto, CreateSessionDto, ScanAssetDto } from './dto/inventory.dto';
+import { CheckItemDto, CreateSessionDto, ScanAssetDto, UpdateSessionDto } from './dto/inventory.dto';
 
 // Инвентаризация — рабочий процесс, а не справочные данные: её ход, состав
 // и расхождения видны только тем, кто её проводит. Роль «Просмотр»
@@ -35,6 +35,15 @@ export class InventoryController {
 
   @Get('sessions/:id')
   getSession(@Param('id') id: string) { return this.inventoryService.getSession(id); }
+
+  // Права те же, что на создание: исправить опечатку в названии должен
+  // мочь тот, кто сессию и завёл. Закрытую сессию сервис править не даёт
+  @Patch('sessions/:id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'accountant', 'inventorizer')
+  updateSession(@Param('id') id: string, @Body() dto: UpdateSessionDto) {
+    return this.inventoryService.updateSession(id, dto);
+  }
 
   @Get('sessions/:id/stats')
   getSessionStats(@Param('id') id: string) { return this.inventoryService.getSessionStats(id); }

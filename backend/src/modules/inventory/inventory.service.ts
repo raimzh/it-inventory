@@ -1,11 +1,12 @@
-﻿import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InventorySession, SessionStatus } from './entities/inventory-session.entity';
 import { InventoryItem } from './entities/inventory-item.entity';
 import { Asset, AssetStatus } from '../assets/entities/asset.entity';
-import { CheckItemDto, CreateSessionDto, ScanAssetDto } from './dto/inventory.dto';
+import { CheckItemDto, CreateSessionDto, ScanAssetDto, UpdateSessionDto } from './dto/inventory.dto';
 import { parseScanCode } from '../../common/scan/parse-scan-code';
+import { buildSessionPatch } from './session-patch';
 
 @Injectable()
 export class InventoryService {
@@ -52,6 +53,37 @@ export class InventoryService {
     const session = await this.sessionRepo.findOne({ where: { id }, relations: { department: true } });
     if (!session) throw new NotFoundException('Сессия не найдена');
     return session;
+  }
+
+  /**
+   * Правка названия и описания открытой сессии.
+   *
+   * Закрытую сессию править нельзя: она уже служит основанием для акта, и
+   * переписать её название задним числом — значит разойтись с бумагой,
+   * которую по ней подписали. Отказ выдаётся 409-м: запрос правильный,
+   * мешает состояние сессии, а не его содержимое.
+   *
+   * Поля перечислены поимённо, а не через `...dto`, как и во всём этом
+   * сервисе: иначе телом запроса можно переставить счётчики, даты или
+   * подразделение, от которого зависит состав.
+   */
+  async updateSession(id: string, dto: UpdateSessionDto) {
+    const session = await this.getSession(id);
+    if (session.status === SessionStatus.CLOSED) {
+      throw new ConflictException('Закрытую сессию править нельзя');
+    }
+
+    const built = buildSessionPatch(dto);
+    if (!built.ok) {
+      throw new BadRequestException(
+        built.reason === 'blank-name'
+          ? 'Название не может быть пустым'
+          : 'Нечего менять: укажите название или описание',
+      );
+    }
+
+    await this.sessionRepo.update(id, built.patch);
+    return this.getSession(id);
   }
 
   async getSessionItems(sessionId: string, page = 1, limit = 50, isChecked?: boolean) {

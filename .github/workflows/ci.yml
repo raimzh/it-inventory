@@ -175,6 +175,10 @@ jobs:
           BASE_URL: http://localhost:3009
         run: npm run test:inventory
 
+      - name: Правка сессии инвентаризации
+        working-directory: backend
+        run: npm run test:session-patch
+
       - name: Разбор этикеток и поиск по коду
         working-directory: backend
         env:

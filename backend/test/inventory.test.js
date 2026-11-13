@@ -317,3 +317,113 @@ test('несуществующая сессия даёт 404, а не пусто
   const res = await req('/inventory/sessions/00000000-0000-0000-0000-000000000000', { token: ctx.adminToken });
   assert.equal(res.status, 404);
 });
+
+test('правка меняет название и описание открытой сессии', async () => {
+  const dept = await makeDept();
+  await makeAsset(dept);
+  const session = await makeSession(dept);
+
+  const res = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken,
+    body: { name: 'Переименована', description: 'ноябрь 26' },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.name, 'Переименована');
+  assert.equal(res.body.description, 'ноябрь 26');
+
+  // Правка не должна задевать состав и счётчики
+  assert.equal(res.body.totalAssets, session.totalAssets);
+  assert.equal(res.body.status, 'open');
+});
+
+test('правится и одно поле: непришедшее остаётся прежним', async () => {
+  const dept = await makeDept();
+  const session = await makeSession(dept);
+
+  const only = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken, body: { description: 'только описание' },
+  });
+  assert.equal(only.status, 200);
+  assert.equal(only.body.description, 'только описание');
+  assert.equal(only.body.name, session.name, 'название трогать не просили');
+});
+
+test('описание можно очистить, а название — нет', async () => {
+  const dept = await makeDept();
+  const session = await makeSession(dept);
+
+  await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken, body: { description: 'временно' },
+  });
+  const cleared = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken, body: { description: '' },
+  });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.description, '', 'пустое описание — допустимое значение');
+
+  // Имя из одних пробелов валидатор пропускает: его отсекает сервис после trim
+  const blank = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken, body: { name: '   ' },
+  });
+  assert.equal(blank.status, 400, 'сессия без названия не опознаётся в списке');
+});
+
+test('закрытую сессию править нельзя', async () => {
+  const dept = await makeDept();
+  await makeAsset(dept);
+  const session = await makeSession(dept);
+  await req(`/inventory/sessions/${session.id}/close`, { method: 'POST', token: ctx.adminToken });
+
+  const res = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken, body: { name: 'Задним числом' },
+  });
+  assert.equal(res.status, 409, 'по закрытой сессии уже подписан акт');
+
+  const after = await req(`/inventory/sessions/${session.id}`, { token: ctx.adminToken });
+  assert.notEqual(after.body.name, 'Задним числом', 'название должно остаться прежним');
+});
+
+test('пустое тело правки — ошибка, а не молчаливый успех', async () => {
+  const dept = await makeDept();
+  const session = await makeSession(dept);
+
+  const res = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken, body: {},
+  });
+  assert.equal(res.status, 400);
+});
+
+test('правка не принимает посторонние поля', async () => {
+  const dept = await makeDept();
+  await makeAsset(dept);
+  const session = await makeSession(dept);
+
+  // Самое опасное — состав и счётчики: через них подделывается результат
+  const res = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.adminToken,
+    body: { name: 'Обычная правка', status: 'closed', totalAssets: 1, checkedAssets: 999, endDate: new Date().toISOString() },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.name, 'Обычная правка');
+  assert.equal(res.body.status, 'open', 'статус телом запроса не меняется');
+  assert.equal(res.body.checkedAssets, 0, 'счётчик проверенных подделать нельзя');
+  assert.equal(res.body.totalAssets, session.totalAssets, 'состав подделать нельзя');
+  assert.equal(res.body.endDate, null, 'дата окончания ставится только закрытием');
+});
+
+test('роль «Просмотр» править сессию не может', async () => {
+  const dept = await makeDept();
+  const session = await makeSession(dept);
+
+  const res = await req(`/inventory/sessions/${session.id}`, {
+    method: 'PATCH', token: ctx.viewer.token, body: { name: 'Не должна примениться' },
+  });
+  assert.equal(res.status, 403);
+});
+
+test('правка несуществующей сессии даёт 404', async () => {
+  const res = await req('/inventory/sessions/00000000-0000-0000-0000-000000000000', {
+    method: 'PATCH', token: ctx.adminToken, body: { name: 'Нет такой' },
+  });
+  assert.equal(res.status, 404);
+});
