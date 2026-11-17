@@ -71,6 +71,23 @@ if ($LASTEXITCODE -ne 0) { Fail "сборка backend не удалась. Бо�
 
 Write-Host "== Сборка frontend (в .next-staging) ==" -ForegroundColor Cyan
 if (Test-Path $FrontStaging) { Remove-Item $FrontStaging -Recurse -Force }
+
+# Next при каждой сборке ПЕРЕПИСЫВАЕТ эти два файла под свой distDir:
+# next-env.d.ts начинает импортировать типы из .next-staging, а в include
+# tsconfig.json добавляются пути туда же. Файлы отслеживаются git, и после
+# подмены каталогов ссылки повисают в пустоту — ломается и typecheck, и
+# подсказки в редакторе. Поэтому запоминаем их и возвращаем как было.
+$Touched = @("frontend\next-env.d.ts", "frontend\tsconfig.json")
+$Backups = @{}
+foreach ($f in $Touched) {
+    $full = Join-Path $PSScriptRoot $f
+    if (Test-Path $full) {
+        $tmp = [System.IO.Path]::GetTempFileName()
+        Copy-Item $full $tmp -Force
+        $Backups[$full] = $tmp
+    }
+}
+
 $env:NEXT_DIST_DIR = ".next-staging"
 try {
     npm --prefix frontend run build
@@ -82,6 +99,11 @@ try {
     # пойдёт искать сборку в staging-каталоге, которого после подмены уже
     # нет, и сайт ляжет сразу после удачного деплоя
     Remove-Item Env:\NEXT_DIST_DIR -ErrorAction SilentlyContinue
+
+    foreach ($pair in $Backups.GetEnumerator()) {
+        Copy-Item $pair.Value $pair.Key -Force
+        Remove-Item $pair.Value -Force -ErrorAction SilentlyContinue
+    }
 }
 if ($buildCode -ne 0) { Fail "сборка frontend не удалась. Боевая версия не тронута, сайт работает." }
 
