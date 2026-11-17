@@ -9,6 +9,12 @@ dist/
 out/
 build/
 *.tsbuildinfo
+# Деплой: сборка в сторону и предыдущая версия для отката (redeploy.ps1)
+.next-staging/
+.next-prev/
+dist-staging/
+dist-prev/
+
 
 # Env
 .env
