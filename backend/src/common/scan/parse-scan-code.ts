@@ -35,6 +35,20 @@ function build(kind: ScanKind, key: string, rawId: string | undefined, raw: stri
   return { kind, key: key.trim(), id, raw };
 }
 
+/**
+ * Убирает ведущие нули у чисто цифрового номера.
+ *
+ * Повторяет stripLeadingZeros из frontend/src/lib/scan-code.ts. Часть
+ * наклеек и выгрузок пишет номер дополненным нулями до девяти знаков
+ * (`000009079`), тогда как в учёте тот же объект хранится как `9079`.
+ *
+ * Номера с разделителем (`00-001188`) не трогаем: там ведущие нули —
+ * часть формата, а не дополнение.
+ */
+export function stripLeadingZeros(value: string): string {
+  return /^\d+$/.test(value) ? value.replace(/^0+(?=\d)/, '') : value;
+}
+
 export function parseScanCode(input: string): ParsedScan {
   const raw = (input ?? '').trim();
 

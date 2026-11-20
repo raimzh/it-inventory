@@ -23,6 +23,7 @@
     "test:backup": "node --test test/backup.test.js",
     "test:backup-retention": "node --test test/backup.retention.test.js",
     "test:sync": "node --test test/sync.test.js",
+    "test:one-c": "node --test test/one-c.mapping.test.js",
     "test:reports": "node --test test/reports.test.js"
   },
   "dependencies": {

@@ -13,11 +13,17 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class SyncController {
   constructor(private syncService: SyncService) {}
 
+  /**
+   * `?dryRun=true` — пробный прогон: та же загрузка из 1С и то же
+   * сопоставление, но без записи. Возвращает отчёт: что совпало, что
+   * создалось бы и изменилось бы, по какому полю 1С совпадают номера.
+   * Первый обмен с базой 1С делается только после него.
+   */
   @Post('run')
   @Roles('admin', 'accountant')
-  @ApiOperation({ summary: 'Запустить синхронизацию с 1С вручную' })
-  runSync(@CurrentUser() user: any) {
-    return this.syncService.runSync(user?.id, user?.fullName, 'manual');
+  @ApiOperation({ summary: 'Запустить синхронизацию с 1С вручную (dryRun=true — без записи)' })
+  runSync(@CurrentUser() user: any, @Query('dryRun') dryRun?: string) {
+    return this.syncService.runSync(user?.id, user?.fullName, 'manual', dryRun === 'true');
   }
 
   @Post('import')

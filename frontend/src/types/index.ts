@@ -119,6 +119,35 @@ export interface SyncLog {
   errors: any[];
   triggeredByName?: string;
   source: string;
+  /** Есть только в ответе на запуск обмена; в журнале не хранится */
+  report?: SyncReport;
+}
+
+/** Отчёт обмена с 1С — у пробного прогона это весь его результат */
+export interface SyncReport {
+  dryRun: boolean;
+  profile?: string;
+  entity?: string;
+  matchField?: string;
+  fetched: number;
+  skipped: { folder: number; deleted: number; noNumber: number };
+  candidates?: { field: string; present: number; matched: number }[];
+  coverage?: { field: string; present: number }[];
+  lookups?: { departments: number; persons: number; location: number; inventoryNumbers: number };
+  warnings: string[];
+  siteTotal: number;
+  updates: number;
+  unchanged: number;
+  creates: number;
+  conflicts: { inventoryNumber: string; reason: string }[];
+  missingInOneC: number;
+  markedDeletedOnSite: { inventoryNumber: string; name: string }[];
+  numberMismatch: { site: string; oneC: string }[];
+  samples: {
+    updates: { inventoryNumber: string; changes: { field: string; from: string | null; to: string }[] }[];
+    creates: { inventoryNumber: string; name: string | null }[];
+    missingInOneC: { inventoryNumber: string; name: string }[];
+  };
 }
 
 export interface InventorySession {
