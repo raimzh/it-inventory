@@ -61,6 +61,10 @@ jobs:
       # По умолчанию каталог копий — /app/backups (путь из образа), на
       # раннере он недоступен на запись
       BACKUP_DIR: backups
+      # Обмен с 1С проверяется против эмулятора OData (test/odata-emulator.js),
+      # который тест обмена поднимает на этом порту. Плановый обмен выключен:
+      # без ONE_C_SYNC_ENABLED крон не срабатывает
+      ONE_C_URL: http://127.0.0.1:3998/base/odata/standard.odata
 
     steps:
       - uses: actions/checkout@v4
@@ -154,7 +158,14 @@ jobs:
         working-directory: backend
         env:
           BASE_URL: http://localhost:3009
+          ONE_C_EMULATOR_PORT: '3998'
         run: npm run test:sync
+
+      # Разбор ответа OData, сопоставление и сетевая часть против эмулятора.
+      # Базы и приложения не требует
+      - name: Обмен с 1С — сопоставление и OData-клиент
+        working-directory: backend
+        run: npm run test:one-c
 
       # Идёт ПЕРЕД набором по HTTP: если ротация сломана, узнать об этом надо
       # раньше, чем тесты начнут создавать настоящие копии. Базы не требует —

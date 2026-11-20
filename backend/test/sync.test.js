@@ -211,3 +211,125 @@ test('время последнего обмена доступно всем —
   const res = await req('/sync/last', { token: ctx.viewer.token });
   assert.equal(res.status, 200);
 });
+
+/* ------------------------------------------------------------------ */
+/* Обмен по OData против эмулятора 1С                                  */
+/* ------------------------------------------------------------------ */
+//
+// Приложение должно быть запущено с ONE_C_URL, указывающим на эмулятор:
+//   ONE_C_URL=http://127.0.0.1:3998/base/odata/standard.odata
+// а тест — с ONE_C_EMULATOR_PORT=3998. Так настроен CI. Без переменной
+// эти сценарии пропускаются: приложение, запущенное без адреса 1С, всё
+// равно ответило бы «1C URL не настроен».
+
+const { startEmulator, guid } = require('./odata-emulator');
+const EMU_PORT = process.env.ONE_C_EMULATOR_PORT;
+const odata = { emu: null };
+
+async function emulatorFor(assets) {
+  if (odata.emu) await odata.emu.close();
+  const dept = guid(9001), person = guid(9002);
+  odata.emu = await startEmulator({
+    port: Number(EMU_PORT),
+    entities: {
+      'Catalog_ОбъектыЭксплуатации': assets,
+      'Catalog_СтруктураПредприятия': [{ Ref_Key: dept, Description: 'Отдел из 1С' }],
+      'Catalog_ФизическиеЛица': [{ Ref_Key: person, Description: 'Сидоров С.С.' }],
+      'InformationRegister_МестонахождениеОС/SliceLast()': assets
+        .filter(a => !a.IsFolder)
+        .map(a => ({ 'ОсновноеСредство_Key': a.Ref_Key, 'Местонахождение_Key': dept, 'МОЛ_Key': person })),
+    },
+  });
+}
+
+after(async () => { if (odata.emu) await odata.emu.close(); });
+
+async function runOneC(dryRun) {
+  const res = await req(`/sync/run${dryRun ? '?dryRun=true' : ''}`, { method: 'POST', token: ctx.adminToken });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(res.body.status, 'success', `обмен должен пройти: ${JSON.stringify(res.body.errors)}`);
+  return res.body;
+}
+
+async function findByNumber(inv) {
+  const found = await req(`/assets?search=${encodeURIComponent(inv)}&limit=50`, { token: ctx.adminToken });
+  return found.body.data.filter(a => a.inventoryNumber === inv);
+}
+
+/** Набор: существующая ОС, новая из 1С, группа и помеченная на удаление */
+async function scenario() {
+  const existing = await makeAsset({ ownerName: 'Владелец с сайта' });
+  const deleted = await makeAsset();
+  const newInv = `SYNC-1C-${uniq()}`;
+  const g = { existing: guid(Math.floor(Math.random() * 1e9)), fresh: guid(Math.floor(Math.random() * 1e9)) };
+  await emulatorFor([
+    { Ref_Key: g.existing, Code: '00-000001', Description: 'Наименование из 1С', 'ИнвентарныйНомер': existing.inventoryNumber, 'ЗаводскойНомер': 'SN-ИЗ-ODATA', IsFolder: false, DeletionMark: false },
+    { Ref_Key: g.fresh, Code: '00-000002', Description: 'Новая из 1С', 'ИнвентарныйНомер': newInv, IsFolder: false, DeletionMark: false },
+    { Ref_Key: guid(7), Code: 'ГРУППА', Description: 'Оргтехника', IsFolder: true },
+    { Ref_Key: guid(8), Code: '00-000003', Description: 'Помечена', 'ИнвентарныйНомер': deleted.inventoryNumber, DeletionMark: true, IsFolder: false },
+  ]);
+  return { existing, deleted, newInv, g };
+}
+
+test('OData: пробный прогон показывает план и НИЧЕГО не пишет', { skip: !EMU_PORT && 'нет ONE_C_EMULATOR_PORT' }, async () => {
+  const s = await scenario();
+  const run = await runOneC(true);
+
+  assert.equal(run.source, 'dry-run');
+  const r = run.report;
+  assert.ok(r, 'у пробного прогона должен быть отчёт');
+  assert.equal(r.dryRun, true);
+  assert.equal(r.skipped.folder, 1);
+  assert.equal(r.skipped.deleted, 1);
+
+  const upd = r.samples.updates.find(u => u.inventoryNumber === s.existing.inventoryNumber);
+  assert.ok(upd, 'существующая ОС должна быть в плане обновления');
+  const fields = Object.fromEntries(upd.changes.map(c => [c.field, c.to]));
+  assert.equal(fields.name, 'Наименование из 1С');
+  assert.equal(fields.departmentName, 'Отдел из 1С', 'подразделение развёрнуто из ссылки, а не GUID');
+  assert.equal(fields.responsiblePerson, 'Сидоров С.С.');
+  assert.ok(r.samples.creates.some(c => c.inventoryNumber === s.newInv));
+  assert.ok(r.markedDeletedOnSite.some(d => d.inventoryNumber === s.deleted.inventoryNumber));
+
+  const cand = r.candidates.find(c => c.field === 'ИнвентарныйНомер');
+  assert.ok(cand.matched >= 2, 'по инвентарному номеру должны найтись обе существующие ОС');
+
+  // Главное: в учёте ничего не изменилось
+  const after1 = await getAsset(s.existing.id);
+  assert.equal(after1.name, 'Исходное наименование');
+  assert.equal(after1.oneCGuid, null);
+  assert.equal((await findByNumber(s.newInv)).length, 0, 'пробный прогон не должен создавать ОС');
+
+  const last = await req('/sync/last', { token: ctx.adminToken });
+  assert.notEqual(last.body?.id, run.id, 'пробный прогон не считается последней синхронизацией');
+});
+
+test('OData: настоящий прогон обновляет, создаёт и не плодит дубли', { skip: !EMU_PORT && 'нет ONE_C_EMULATOR_PORT' }, async () => {
+  const s = await scenario();
+
+  const first = await runOneC(false);
+  assert.equal(first.source, 'manual');
+
+  const a = await getAsset(s.existing.id);
+  assert.equal(a.name, 'Наименование из 1С');
+  assert.equal(a.serialNumber, 'SN-ИЗ-ODATA');
+  assert.equal(a.departmentName, 'Отдел из 1С');
+  assert.equal(a.responsiblePerson, 'Сидоров С.С.');
+  assert.equal(a.oneCGuid, s.g.existing);
+  assert.ok(a.lastSyncedAt, 'отметка обмена должна проставиться');
+  assert.equal(a.ownerName, 'Владелец с сайта', 'владельца ведёт сайт — обмен его не трогает');
+  assert.equal(Number(a.residualValue), 12345.67, 'стоимости в выгрузке нет — значение сохраняется');
+
+  const created = await findByNumber(s.newInv);
+  assert.equal(created.length, 1, 'новая ОС из 1С должна появиться ровно один раз');
+  ctx.assetIds.push(created[0].id);
+  assert.equal(created[0].name, 'Новая из 1С');
+
+  const d = await getAsset(s.deleted.id);
+  assert.equal(d.name, 'Исходное наименование', 'помеченная на удаление в 1С не перезаписывается');
+
+  // Повторный обмен с тем же содержимым ничего не меняет и не дублирует
+  const second = await runOneC(false);
+  assert.equal((await findByNumber(s.newInv)).length, 1, 'повторный обмен не должен создавать дубль');
+  assert.equal(second.recordsCreated, 0);
+});

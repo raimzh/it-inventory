@@ -132,7 +132,8 @@ export const inventoryApi = {
 
 // Sync
 export const syncApi = {
-  run: () => api.post("/sync/run"),
+  // dryRun — пробный прогон: тот же обмен, но без записи, с отчётом
+  run: (dryRun = false) => api.post("/sync/run", null, { params: dryRun ? { dryRun: "true" } : undefined }),
   getLogs: (limit?: number) => api.get("/sync/logs", { params: { limit } }),
   getLastSync: () => api.get("/sync/last"),
   importFile: (data: any[]) => api.post("/sync/import", { data }),

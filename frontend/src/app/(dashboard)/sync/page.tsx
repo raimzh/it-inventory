@@ -1,11 +1,13 @@
 "use client";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { syncApi } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
-import { SyncLog } from "@/types";
+import { SyncLog, SyncReport } from "@/types";
+import { SyncReportView } from "@/components/sync/SyncReportView";
 import { useAuthStore } from "@/store/auth.store";
-import { RefreshCw, CheckCircle2, XCircle, Clock, Database, Settings2 } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, Clock, Database, Settings2, FlaskConical } from "lucide-react";
 
 // Скрытие второстепенных колонок на узком экране: параллельный заголовкам
 // массив классов по индексу (см. тот же приём в admin/page.tsx).
@@ -33,13 +35,29 @@ export default function SyncPage() {
     queryFn: () => syncApi.getLastSync().then(r => r.data),
   });
 
+  // Отчёт последнего запуска с этой страницы. В журнале он не хранится —
+  // только счётчики, — поэтому живёт до перезагрузки страницы
+  const [report, setReport] = useState<SyncReport | null>(null);
+
   const syncMutation = useMutation({
-    mutationFn: () => syncApi.run(),
-    onSuccess: () => {
+    mutationFn: (dryRun: boolean) => syncApi.run(dryRun).then(r => r.data as SyncLog),
+    onSuccess: (log) => {
+      setReport(log.report ?? null);
       qc.invalidateQueries({ queryKey: ["sync-logs"] });
       qc.invalidateQueries({ queryKey: ["last-sync"] });
     },
   });
+
+  const runReal = () => {
+    // Первый настоящий обмен пишет в реестр сотни карточек сразу. Ошибка
+    // сопоставления при этом не роняет обмен, а тихо плодит дубли — поэтому
+    // перед ним напоминаем о пробном прогоне
+    if (!lastSync && !window.confirm(
+      "Обмен с 1С ещё ни разу не проходил. Он сразу запишет изменения в реестр ОС.\n\n" +
+      "Сначала стоит сделать «Пробный прогон» и проверить отчёт. Продолжить всё равно?",
+    )) return;
+    syncMutation.mutate(false);
+  };
 
   const canSync = user && ["admin", "accountant"].includes(user.role);
 
@@ -47,17 +65,40 @@ export default function SyncPage() {
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="Синхронизация с 1С">
         {canSync && (
-          <Button
-            size="sm" loading={syncMutation.isPending}
-            onClick={() => syncMutation.mutate()}
-            icon={<RefreshCw className={`w-3.5 h-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />}
-          >
-            Обновить из 1С
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm" variant="secondary"
+              loading={syncMutation.isPending && syncMutation.variables === true}
+              disabled={syncMutation.isPending}
+              onClick={() => syncMutation.mutate(true)}
+              icon={<FlaskConical className="w-3.5 h-3.5" />}
+              title="Загрузить из 1С и показать, что изменится, ничего не записывая"
+            >
+              Пробный прогон
+            </Button>
+            <Button
+              size="sm"
+              loading={syncMutation.isPending && syncMutation.variables === false}
+              disabled={syncMutation.isPending}
+              onClick={runReal}
+              icon={<RefreshCw className={`w-3.5 h-3.5 ${syncMutation.isPending && syncMutation.variables === false ? "animate-spin" : ""}`} />}
+            >
+              Обновить из 1С
+            </Button>
+          </div>
         )}
       </Header>
 
       <div className="p-6 space-y-5">
+        {report && <SyncReportView report={report} onClose={() => setReport(null)} />}
+
+        {/* Ошибка запуска без отчёта — например, 1С не ответила */}
+        {!report && syncMutation.data?.status === "error" && (
+          <div className="card p-4 border-red-200 dark:border-red-900 text-sm text-red-700 dark:text-red-300">
+            Обмен не прошёл: {syncMutation.data.errors?.map(e => e.message ?? e.error).filter(Boolean).join("; ") || "причина в журнале"}
+          </div>
+        )}
+
         {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="card p-5">
@@ -119,7 +160,9 @@ export default function SyncPage() {
               </p>
             </div>
             <p className="text-xs text-gray-400 dark:text-slate-500">
-              Автосинхронизация: ежедневно в 06:00. Изменить расписание: переменная <code className="font-mono text-gray-500">ONE_C_SYNC_CRON</code> в .env
+              Обмен по расписанию (ежедневно в 06:00, переменная <code className="font-mono text-gray-500">ONE_C_SYNC_CRON</code>)
+              включается переменной <code className="font-mono text-gray-500">ONE_C_SYNC_ENABLED=true</code> в .env — только после
+              проверки отчёта пробного прогона.
             </p>
           </div>
         </div>
@@ -151,6 +194,10 @@ export default function SyncPage() {
                           <Icon className={`w-3 h-3 ${log.status === "running" ? "animate-spin" : ""}`} />
                           {cfg?.label}
                         </span>
+                        {/* Счётчики пробного прогона — «было бы», а не «сделано» */}
+                        {log.source === "dry-run" && (
+                          <span className="ml-1.5 text-[11px] font-semibold text-gray-400 dark:text-slate-500">пробный</span>
+                        )}
                       </td>
                       <td className={`td text-xs text-gray-500 dark:text-slate-400 tabular-nums ${SYNC_COL_HIDE[1]}`}>{new Date(log.startedAt).toLocaleString("ru-RU")}</td>
                       <td className={`td text-xs text-gray-500 dark:text-slate-400 tabular-nums ${SYNC_COL_HIDE[2]}`}>{log.finishedAt ? new Date(log.finishedAt).toLocaleString("ru-RU") : "—"}</td>
